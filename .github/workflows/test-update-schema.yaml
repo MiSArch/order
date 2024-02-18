@@ -1,0 +1,24 @@
+name: Test update GraphQL schema on pull request
+
+on:
+  pull_request:
+
+jobs:
+  schema:
+    name: Test update GraphQL schema on pull request
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install latest stable
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+      - uses: actions/checkout@v4
+        with:
+          repository: "misarch/schemas"
+          path: "schemas"
+      - name: Save graphql schemas
+        run: |
+          sudo apt install -y protobuf-compiler
+          cargo run -- --generate-schema

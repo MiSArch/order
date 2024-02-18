@@ -1,0 +1,34 @@
+name: Update GraphQL schema
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  schema:
+    name: Update GraphQL schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install latest stable
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+      - uses: actions/checkout@v4
+        with:
+          repository: "misarch/schemas"
+          path: "schemas"
+      - name: Save graphql schemas
+        run: |
+          sudo apt install -y protobuf-compiler
+          cargo run -- --generate-schema
+      - uses: peter-evans/create-pull-request@v5
+        with:
+          path: ./schemas
+          commit-message: Update order schema
+          branch: update/order
+          token: ${{ secrets.SCHEMAS_PUSH_SECRET }}
