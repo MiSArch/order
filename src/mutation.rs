@@ -188,7 +188,6 @@ async fn validate_object<T: for<'a> Deserialize<'a> + Unpin + Send + Sync>(
 ///
 /// Used before creating orders.
 async fn validate_objects<
-    'a,
     T: for<'b> Deserialize<'b> + Unpin + Send + Sync + PartialEq + From<Uuid>,
 >(
     collection: &Collection<T>,
