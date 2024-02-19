@@ -61,3 +61,9 @@ impl User {
         }
     }
 }
+
+impl From<Uuid> for User {
+    fn from(value: Uuid) -> Self {
+        User { _id: value }
+    }
+}

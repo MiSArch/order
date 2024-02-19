@@ -1,4 +1,5 @@
-use std::collections::HashSet;
+use std::any::type_name;
+use std::collections::BTreeSet;
 
 use async_graphql::{Context, Error, Object, Result};
 use bson::Bson;
@@ -8,13 +9,19 @@ use mongodb::{
     bson::{doc, DateTime},
     Collection, Database,
 };
+use serde::Deserialize;
 
 use crate::authentication::authenticate_user;
+use crate::foreign_types::Discount;
+use crate::foreign_types::ProductItem;
 use crate::foreign_types::ProductVariantVersion;
+use crate::foreign_types::ShipmentMethod;
+use crate::foreign_types::TaxRateVersion;
 use crate::mutation_input_structs::CreateOrderInput;
+use crate::mutation_input_structs::OrderItemInput;
 use crate::order::OrderStatus;
 use crate::order_item::OrderItem;
-use crate::query::query_user;
+use crate::query::query_object;
 use crate::user::User;
 use crate::{order::Order, query::query_order};
 
@@ -108,36 +115,99 @@ async fn set_status_placed(collection: &Collection<Order>, id: Uuid) -> Result<(
     Ok(())
 }
 
-/// Checks if product variants versions and user in CreateOrderInput are in the system (MongoDB database populated with events).
+/// Checks if foreign types exist (MongoDB database populated with events).
 async fn validate_input(db_client: &Database, input: &CreateOrderInput) -> Result<()> {
-    let product_variant_collection: Collection<ProductVariantVersion> =
-        db_client.collection::<ProductVariantVersion>("product_variant_versions");
-    let user_collection: Collection<User> = db_client.collection::<User>("users");
-    // TODO: Validate product variant versions.
-    validate_user(&user_collection, input.user_id).await?;
+    let user_collection: mongodb::Collection<User> = db_client.collection::<User>("users");
+    validate_object(&user_collection, input.user_id).await?;
+    validate_order_items(&db_client, &input.order_items).await?;
     Ok(())
 }
 
-/// Checks if product variants versions are in the system (MongoDB database populated with events).
+/// Checks if all order item parameters are the system (MongoDB database populated with events).
 ///
 /// Used before creating orders.
-async fn validate_product_variant_version_ids(
-    collection: &Collection<ProductVariantVersion>,
-    product_variant_ids: &HashSet<Uuid>,
+async fn validate_order_items(
+    db_client: &Database,
+    order_items: &BTreeSet<OrderItemInput>,
 ) -> Result<()> {
-    let product_variant_ids_vec: Vec<Uuid> = product_variant_ids.clone().into_iter().collect();
+    let product_variant_version_collection: mongodb::Collection<ProductVariantVersion> =
+        db_client.collection::<ProductVariantVersion>("product_variant_versions");
+    let product_item_collection: mongodb::Collection<ProductItem> =
+        db_client.collection::<ProductItem>("product_items");
+    let tax_rate_version_collection: mongodb::Collection<TaxRateVersion> =
+        db_client.collection::<TaxRateVersion>("tax_rate_versions");
+    let shipment_method_collection: mongodb::Collection<ShipmentMethod> =
+        db_client.collection::<ShipmentMethod>("shipment_methods");
+    let product_variant_version_ids = order_items
+        .iter()
+        .map(|o| o.product_variant_version_id)
+        .collect();
+    let product_item_ids = order_items.iter().map(|o| o.product_item_id).collect();
+    let tax_rate_version_ids = order_items.iter().map(|o| o.tax_rate_version_id).collect();
+    let shipment_method_ids = order_items.iter().map(|o| o.shipment_method_id).collect();
+    validate_objects(
+        &product_variant_version_collection,
+        product_variant_version_ids,
+    )
+    .await?;
+    validate_objects(&product_item_collection, product_item_ids).await?;
+    validate_objects(&tax_rate_version_collection, tax_rate_version_ids).await?;
+    validate_objects(&shipment_method_collection, shipment_method_ids).await?;
+    validate_discounts(&db_client, &order_items).await?;
+    Ok(())
+}
+
+/// Checks if discounts are in the system (MongoDB database populated with events).
+///
+/// Used before creating orders.
+async fn validate_discounts(
+    db_client: &Database,
+    order_items: &BTreeSet<OrderItemInput>,
+) -> Result<()> {
+    let discount_collection: mongodb::Collection<Discount> =
+        db_client.collection::<Discount>("discounts");
+    let discount_ids: Vec<Uuid> = order_items
+        .iter()
+        .map(|o| o.discounts.clone())
+        .flatten()
+        .collect();
+    validate_objects(&discount_collection, discount_ids).await
+}
+
+/// Checks if a single object is in the system (MongoDB database populated with events).
+///
+/// Used before creating orders.
+async fn validate_object<T: for<'a> Deserialize<'a> + Unpin + Send + Sync>(
+    collection: &Collection<T>,
+    id: Uuid,
+) -> Result<()> {
+    query_object(&collection, id).await.map(|_| ())
+}
+
+/// Checks if all objects are in the system (MongoDB database populated with events).
+///
+/// Used before creating orders.
+async fn validate_objects<
+    'a,
+    T: for<'b> Deserialize<'b> + Unpin + Send + Sync + PartialEq + From<Uuid>,
+>(
+    collection: &Collection<T>,
+    object_ids: Vec<Uuid>,
+) -> Result<()> {
     match collection
-        .find(doc! {"_id": { "$in": &product_variant_ids_vec } }, None)
+        .find(doc! {"_id": { "$in": &object_ids } }, None)
         .await
     {
         Ok(cursor) => {
-            let product_variants: Vec<ProductVariantVersion> = cursor.try_collect().await?;
-            product_variant_ids_vec.iter().fold(Ok(()), |_, p| {
-                match product_variants.contains(&ProductVariantVersion { _id: *p }) {
-                    true => Ok(()),
+            let product_variants: Vec<T> = cursor.try_collect().await?;
+            object_ids.iter().fold(Ok(()), |o, p| {
+                let object = T::from(*p);
+                match product_variants.contains(&object) {
+                    true => o.and(Ok(())),
                     false => {
                         let message = format!(
-                            "Product variant version with the UUID: `{}` is not present in the system.",
+                            "{} with UUID: `{}` is not present in the system.",
+                            type_name::<T>(),
                             p
                         );
                         Err(Error::new(message))
@@ -145,15 +215,12 @@ async fn validate_product_variant_version_ids(
                 }
             })
         }
-        Err(_) => Err(Error::new(
-            "Product variant versions with the specified UUIDs are not present in the system.",
-        )),
+        Err(_) => {
+            let message = format!(
+                "{} with specified UUIDs are not present in the system.",
+                type_name::<T>()
+            );
+            Err(Error::new(message))
+        }
     }
-}
-
-/// Checks if user is in the system (MongoDB database populated with events).
-///
-/// Used before creating orders.
-async fn validate_user(collection: &Collection<User>, id: Uuid) -> Result<()> {
-    query_user(&collection, id).await.map(|_| ())
 }

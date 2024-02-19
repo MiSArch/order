@@ -1,8 +1,11 @@
+use std::any::type_name;
+
 use crate::{authentication::authenticate_user, order_item::OrderItem, user::User, Order};
 use async_graphql::{Context, Error, Object, Result};
 
 use bson::Uuid;
 use mongodb::{bson::doc, Collection, Database};
+use serde::Deserialize;
 
 /// Describes GraphQL order queries.
 pub struct Query;
@@ -18,7 +21,7 @@ impl Query {
     ) -> Result<User> {
         let db_client = ctx.data_unchecked::<Database>();
         let collection: Collection<User> = db_client.collection::<User>("users");
-        query_user(&collection, id).await
+        query_object(&collection, id).await
     }
 
     /// Retrieves order of specific id.
@@ -29,7 +32,7 @@ impl Query {
     ) -> Result<Order> {
         let db_client = ctx.data_unchecked::<Database>();
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
-        let order = query_order(&collection, id).await?;
+        let order = query_object(&collection, id).await?;
         authenticate_user(&ctx, order.user._id)?;
         Ok(order)
     }
@@ -43,7 +46,7 @@ impl Query {
     ) -> Result<Order> {
         let db_client = ctx.data_unchecked::<Database>();
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
-        let order = query_order(&collection, id).await?;
+        let order = query_object(&collection, id).await?;
         authenticate_user(&ctx, order.user._id)?;
         Ok(order)
     }
@@ -56,7 +59,7 @@ impl Query {
     ) -> Result<OrderItem> {
         let db_client = ctx.data_unchecked::<Database>();
         let collection: Collection<OrderItem> = db_client.collection::<OrderItem>("order_items");
-        let order_item = query_order_item(&collection, id).await?;
+        let order_item = query_object(&collection, id).await?;
         // TODO: Authentication
         //authenticate_user(&ctx, order_item.user._id)?;
         Ok(order_item)
@@ -71,7 +74,7 @@ impl Query {
     ) -> Result<OrderItem> {
         let db_client = ctx.data_unchecked::<Database>();
         let collection: Collection<OrderItem> = db_client.collection::<OrderItem>("order_items");
-        let order_item = query_order_item(&collection, id).await?;
+        let order_item = query_object(&collection, id).await?;
         // TODO: Authentication
         //authenticate_user(&ctx, order_item.user._id)?;
         Ok(order_item)
@@ -98,41 +101,24 @@ pub async fn query_order(collection: &Collection<Order>, id: Uuid) -> Result<Ord
     }
 }
 
-/// Shared function to query an order item from a MongoDB collection of order items.
+/// Shared function to query an object: T from a MongoDB collection of object: T.
 ///
 /// * `connection` - MongoDB database connection.
-/// * `id` - UUID of order_item.
-pub async fn query_order_item(collection: &Collection<OrderItem>, id: Uuid) -> Result<OrderItem> {
+/// * `id` - UUID of object.
+pub async fn query_object<T: for<'a> Deserialize<'a> + Unpin + Send + Sync>(
+    collection: &Collection<T>,
+    id: Uuid,
+) -> Result<T> {
     match collection.find_one(doc! {"_id": id }, None).await {
-        Ok(maybe_order_item) => match maybe_order_item {
-            Some(order_item) => Ok(order_item),
+        Ok(maybe_object) => match maybe_object {
+            Some(object) => Ok(object),
             None => {
-                let message = format!("OrderItem with UUID id: `{}` not found.", id);
+                let message = format!("{} with UUID id: `{}` not found.", type_name::<T>(), id);
                 Err(Error::new(message))
             }
         },
         Err(_) => {
-            let message = format!("OrderItem with UUID id: `{}` not found.", id);
-            Err(Error::new(message))
-        }
-    }
-}
-
-/// Shared function to query a user from a MongoDB collection of users.
-///
-/// * `connection` - MongoDB database connection.
-/// * `id` - UUID of user.
-pub async fn query_user(collection: &Collection<User>, id: Uuid) -> Result<User> {
-    match collection.find_one(doc! {"_id": id }, None).await {
-        Ok(maybe_user) => match maybe_user {
-            Some(user) => Ok(user),
-            None => {
-                let message = format!("User with UUID id: `{}` not found.", id);
-                Err(Error::new(message))
-            }
-        },
-        Err(_) => {
-            let message = format!("User with UUID id: `{}` not found.", id);
+            let message = format!("{} with UUID id: `{}` not found.", type_name::<T>(), id);
             Err(Error::new(message))
         }
     }

@@ -23,6 +23,12 @@ impl From<ProductVariantVersion> for Bson {
     }
 }
 
+impl From<Uuid> for ProductVariantVersion {
+    fn from(value: Uuid) -> Self {
+        ProductVariantVersion { _id: value }
+    }
+}
+
 /// Foreign type of a product item.
 #[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
 #[graphql(unresolvable)]
@@ -40,6 +46,12 @@ impl PartialOrd for ProductItem {
 impl From<ProductItem> for Bson {
     fn from(value: ProductItem) -> Self {
         Bson::Document(doc!("_id": value._id))
+    }
+}
+
+impl From<Uuid> for ProductItem {
+    fn from(value: Uuid) -> Self {
+        ProductItem { _id: value }
     }
 }
 
@@ -63,6 +75,12 @@ impl From<TaxRateVersion> for Bson {
     }
 }
 
+impl From<Uuid> for TaxRateVersion {
+    fn from(value: Uuid) -> Self {
+        TaxRateVersion { _id: value }
+    }
+}
+
 /// Foreign type of a discount.
 #[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
 #[graphql(unresolvable)]
@@ -83,6 +101,12 @@ impl From<Discount> for Bson {
     }
 }
 
+impl From<Uuid> for Discount {
+    fn from(value: Uuid) -> Self {
+        Discount { _id: value }
+    }
+}
+
 /// Foreign type of a shipment method.
 #[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
 #[graphql(unresolvable)]
@@ -100,5 +124,11 @@ impl PartialOrd for ShipmentMethod {
 impl From<ShipmentMethod> for Bson {
     fn from(value: ShipmentMethod) -> Self {
         Bson::Document(doc!("_id": value._id))
+    }
+}
+
+impl From<Uuid> for ShipmentMethod {
+    fn from(value: Uuid) -> Self {
+        ShipmentMethod { _id: value }
     }
 }

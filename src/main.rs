@@ -32,15 +32,14 @@ use query::Query;
 mod mutation;
 use mutation::Mutation;
 
-use foreign_types::ProductVariantVersion;
+use foreign_types::{Discount, ProductItem, ProductVariantVersion, ShipmentMethod, TaxRateVersion};
 
 mod user;
 use user::User;
 
 mod http_event_service;
 use http_event_service::{
-    add_product_variant_version_to_mongodb, add_user_to_mongodb, list_topic_subscriptions,
-    on_topic_event, HttpEventServiceState,
+    add_to_mongodb, list_topic_subscriptions, on_topic_event, HttpEventServiceState,
 };
 
 mod authentication;
@@ -83,10 +82,21 @@ async fn db_connection() -> Client {
 async fn build_dapr_router(db_client: Database) -> Router {
     let product_variant_version_collection: mongodb::Collection<ProductVariantVersion> =
         db_client.collection::<ProductVariantVersion>("product_variant_versions");
+    let product_item_collection: mongodb::Collection<ProductItem> =
+        db_client.collection::<ProductItem>("product_items");
+    let tax_rate_version_collection: mongodb::Collection<TaxRateVersion> =
+        db_client.collection::<TaxRateVersion>("tax_rate_versions");
+    let discount_collection: mongodb::Collection<Discount> =
+        db_client.collection::<Discount>("discounts");
+    let shipment_method_collection: mongodb::Collection<ShipmentMethod> =
+        db_client.collection::<ShipmentMethod>("shipment_methods");
     let user_collection: mongodb::Collection<User> = db_client.collection::<User>("users");
 
-    //add_product_variant_version_to_mongodb(product_variant_version_collection.clone(), Uuid::new()).await;
-    //add_user_to_mongodb(user_collection.clone(), Uuid::new()).await;
+    add_to_mongodb(&product_variant_version_collection, Uuid::parse_str("df150d89-c19b-41f6-88c8-d5be77243b6d").unwrap()).await.unwrap();
+    add_to_mongodb(&product_item_collection, Uuid::parse_str("df150d89-c19b-41f6-88c8-d5be77243b6d").unwrap()).await.unwrap();
+    add_to_mongodb(&tax_rate_version_collection, Uuid::parse_str("df150d89-c19b-41f6-88c8-d5be77243b6d").unwrap()).await.unwrap();
+    add_to_mongodb(&discount_collection, Uuid::parse_str("df150d89-c19b-41f6-88c8-d5be77243b6d").unwrap()).await.unwrap();
+    add_to_mongodb(&shipment_method_collection, Uuid::parse_str("df150d89-c19b-41f6-88c8-d5be77243b6d").unwrap()).await.unwrap();
 
     // Define routes.
     let app = Router::new()
@@ -94,6 +104,10 @@ async fn build_dapr_router(db_client: Database) -> Router {
         .route("/on-topic-event", post(on_topic_event))
         .with_state(HttpEventServiceState {
             product_variant_version_collection,
+            product_item_collection,
+            tax_rate_version_collection,
+            discount_collection,
+            shipment_method_collection,
             user_collection,
         });
     app
