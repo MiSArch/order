@@ -4,7 +4,7 @@ use log::info;
 use mongodb::Collection;
 use serde::{Deserialize, Serialize};
 
-use crate::{foreign_types::ProductVariant, user::User};
+use crate::{foreign_types::ProductVariantVersion, user::User};
 
 /// Data to send to Dapr in order to describe a subscription.
 #[derive(Serialize)]
@@ -44,7 +44,7 @@ pub struct EventData {
 /// Service state containing database connections.
 #[derive(Clone)]
 pub struct HttpEventServiceState {
-    pub product_variant_collection: Collection<ProductVariant>,
+    pub product_variant_collection: Collection<ProductVariantVersion>,
     pub user_collection: Collection<User>,
 }
 
@@ -90,10 +90,10 @@ pub async fn on_topic_event(
 
 /// Add a newly created product variant to MongoDB.
 pub async fn add_product_variant_to_mongodb(
-    collection: Collection<ProductVariant>,
+    collection: Collection<ProductVariantVersion>,
     id: Uuid,
 ) -> Result<(), StatusCode> {
-    let product_variant = ProductVariant { _id: id };
+    let product_variant = ProductVariantVersion { _id: id };
     match collection.insert_one(product_variant, None).await {
         Ok(_) => Ok(()),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),

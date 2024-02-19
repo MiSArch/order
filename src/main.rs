@@ -79,8 +79,8 @@ async fn db_connection() -> Client {
 ///
 /// Adds endpoints to define pub/sub interaction with Dapr.
 async fn build_dapr_router(db_client: Database) -> Router {
-    let product_variant_collection: mongodb::Collection<ProductVariant> =
-        db_client.collection::<ProductVariant>("product_variants");
+    let product_variant_collection: mongodb::Collection<ProductVariantVersion> =
+        db_client.collection::<ProductVariantVersion>("product_variant_versions");
     let user_collection: mongodb::Collection<User> = db_client.collection::<User>("users");
 
     // Define routes.
@@ -92,20 +92,6 @@ async fn build_dapr_router(db_client: Database) -> Router {
             user_collection,
         });
     app
-}
-
-/// Can be used to insert dummy order data in the MongoDB database.
-#[allow(dead_code)]
-async fn insert_dummy_data(collection: &Collection<Order>) {
-    let orders: Vec<Order> = vec![Order {
-        _id: Uuid::new(),
-        user: User { _id: Uuid::new() },
-        internal_product_variants: HashSet::new(),
-        name: String::from("test"),
-        created_at: DateTime::now(),
-        last_updated_at: DateTime::now(),
-    }];
-    collection.insert_many(orders, None).await.unwrap();
 }
 
 /// Command line argument to toggle schema generation instead of service execution.

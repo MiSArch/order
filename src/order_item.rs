@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{cmp::Ordering, collections::HashSet};
 
 use async_graphql::{ComplexObject, SimpleObject, Result};
 use bson::{DateTime, Uuid};
@@ -6,8 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{discount_connection::DiscountConnection, foreign_types::{Discount, ProductItem, ProductVariantVersion, ShipmentMethod, TaxRateVersion}, mutation_input_structs::OrderItemInput, order_datatypes::CommonOrderInput};
 
-/// TODO
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone, SimpleObject)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, SimpleObject)]
 #[graphql(complex)]
 pub struct OrderItem {
     /// OrderItem UUID.
@@ -28,9 +27,9 @@ pub struct OrderItem {
 }
 
 impl OrderItem {
-    pub fn new(order_item_input: OrderItemInput, created_at: DateTime) -> Self {
-        todo!("Calculate compensatable amount!");
-        let internal_discounts = order_item_input.discounts.iter().map{|id| Discount { _id: id}}.collect();
+    pub fn new(order_item_input: &OrderItemInput, created_at: DateTime) -> Self {
+        // TODO: Calculate compensatable amount!
+        let internal_discounts = order_item_input.discounts.iter().map(|id| Discount { _id: *id }).collect();
         Self {
             _id: Uuid::new(),
             created_at,
@@ -77,5 +76,17 @@ impl OrderItem {
             has_next_page,
             total_count: total_count as u64,
         }) */
+    }
+}
+
+impl PartialOrd for OrderItem {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self._id.partial_cmp(&other._id)
+    }
+}
+
+impl Ord for OrderItem {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self._id.cmp(&other._id)
     }
 }

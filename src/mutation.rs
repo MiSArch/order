@@ -10,8 +10,10 @@ use mongodb::{
 };
 
 use crate::authentication::authenticate_user;
+use crate::foreign_types::ProductVariantVersion;
 use crate::mutation_input_structs::CreateOrderInput;
 use crate::order::OrderStatus;
+use crate::order_item::OrderItem;
 use crate::query::query_user;
 use crate::user::User;
 use crate::{
@@ -34,13 +36,8 @@ impl Mutation {
         let db_client = ctx.data_unchecked::<Database>();
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         validate_input(db_client, &input).await?;
-        let normalized_product_variants: HashSet<ProductVariant> = input
-            .product_variant_ids
-            .iter()
-            .map(|id| ProductVariant { _id: id.clone() })
-            .collect();
         let current_timestamp = DateTime::now();
-        let internal_order_items = input.order_items.iter().map{|x| OrderItem::new(x, &current_timestamp)}.collect();
+        let internal_order_items = input.order_items.iter().map(|i| OrderItem::new(i, current_timestamp)).collect();
         let order = Order {
             _id: Uuid::new(),
             user: User { _id: input.user_id },
@@ -58,47 +55,22 @@ impl Mutation {
         }
     }
 
-    /// Updates name and/or product_variant_ids of a specific order referenced with an id.
-    ///
-    /// Formats UUIDs as hyphenated lowercase Strings.
-    async fn update_order<'a>(
+    /// Places an existing order by changing its status to `OrderStatus::Placed`.
+    async fn place_order<'a>(
         &self,
         ctx: &Context<'a>,
-        #[graphql(desc = "UpdateOrderInput")] input: UpdateOrderInput,
+        #[graphql(desc = "Uuid of order to place")] id: Uuid,
     ) -> Result<Order> {
-        let db_client = ctx.data_unchecked::<Database>();
-        let collection: Collection<Order> = db_client.collection::<Order>("orders");
-        let order = query_order(&collection, input.id).await?;
-        authenticate_user(&ctx, order.user._id)?;
-        let product_variant_collection: Collection<ProductVariant> =
-            db_client.collection::<ProductVariant>("product_variants");
-        let current_timestamp = DateTime::now();
-        update_product_variant_ids(
-            &collection,
-            &product_variant_collection,
-            &input,
-            &current_timestamp,
-        )
-        .await?;
-        update_name(&collection, &input, &current_timestamp).await?;
-        query_order(&collection, input.id).await
-    }
-
-    /// Deletes order of id.
-    async fn delete_order<'a>(
-        &self,
-        ctx: &Context<'a>,
-        #[graphql(desc = "UUID of order to delete.")] id: Uuid,
-    ) -> Result<bool> {
         let db_client = ctx.data_unchecked::<Database>();
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         let order = query_order(&collection, id).await?;
         authenticate_user(&ctx, order.user._id)?;
-        if let Err(_) = collection.delete_one(doc! {"_id": id }, None).await {
-            let message = format!("Deleting order of id: `{}` failed in MongoDB.", id);
-            return Err(Error::new(message));
-        }
-        Ok(true)
+        set_status_placed(
+            &collection,
+            id
+        )
+        .await?;
+        query_order(&collection, id).await
     }
 }
 
@@ -118,74 +90,46 @@ fn uuid_from_bson(bson: Bson) -> Result<Uuid> {
     }
 }
 
-/// Updates product variant ids of a order.
+/// Sets the status of an order to `OrderStatus::Placed`.
 ///
 /// * `collection` - MongoDB collection to update.
 /// * `input` - `UpdateOrderInput`.
-async fn update_product_variant_ids(
+async fn set_status_placed(
     collection: &Collection<Order>,
-    product_variant_collection: &Collection<ProductVariant>,
-    input: &UpdateOrderInput,
-    current_timestamp: &DateTime,
+    id: Uuid,
 ) -> Result<()> {
-    if let Some(definitely_product_variant_ids) = &input.product_variant_ids {
-        validate_product_variant_ids(&product_variant_collection, definitely_product_variant_ids)
-            .await?;
-        let normalized_product_variants: Vec<ProductVariant> = definitely_product_variant_ids
-            .iter()
-            .map(|id| ProductVariant { _id: id.clone() })
-            .collect();
-        if let Err(_) = collection.update_one(doc!{"_id": input.id }, doc!{"$set": {"internal_product_variants": normalized_product_variants, "last_updated_at": current_timestamp}}, None).await {
-            let message = format!("Updating product_variant_ids of order of id: `{}` failed in MongoDB.", input.id);
-            return Err(Error::new(message))
-        }
+    let result = collection
+        .update_one(
+            doc! {"_id": id },
+            doc! {"$set": {"status": OrderStatus::Placed}},
+            None,
+        )
+        .await;
+    if let Err(_) = result {
+        let message = format!(
+            "Placing order of id: `{}` failed in MongoDB.",
+            id
+        );
+        return Err(Error::new(message));
     }
     Ok(())
 }
 
-/// Updates name of a order.
-///
-/// * `collection` - MongoDB collection to update.
-/// * `input` - `UpdateOrderInput`.
-async fn update_name(
-    collection: &Collection<Order>,
-    input: &UpdateOrderInput,
-    current_timestamp: &DateTime,
-) -> Result<()> {
-    if let Some(definitely_name) = &input.name {
-        let result = collection
-            .update_one(
-                doc! {"_id": input.id },
-                doc! {"$set": {"name": definitely_name, "last_updated_at": current_timestamp}},
-                None,
-            )
-            .await;
-        if let Err(_) = result {
-            let message = format!(
-                "Updating name of order of id: `{}` failed in MongoDB.",
-                input.id
-            );
-            return Err(Error::new(message));
-        }
-    }
-    Ok(())
-}
-
-/// Checks if product variants and user in AddOrderInput are in the system (MongoDB database populated with events).
-async fn validate_input(db_client: &Database, input: &AddOrderInput) -> Result<()> {
-    let product_variant_collection: Collection<ProductVariant> =
-        db_client.collection::<ProductVariant>("product_variants");
+/// Checks if product variants versions and user in CreateOrderInput are in the system (MongoDB database populated with events).
+async fn validate_input(db_client: &Database, input: &CreateOrderInput) -> Result<()> {
+    let product_variant_collection: Collection<ProductVariantVersion> =
+        db_client.collection::<ProductVariantVersion>("product_variant_versions");
     let user_collection: Collection<User> = db_client.collection::<User>("users");
-    validate_product_variant_ids(&product_variant_collection, &input.product_variant_ids).await?;
+    validate_product_variant_version_ids(&product_variant_collection, &input.product_variant_ids).await?;
     validate_user(&user_collection, input.user_id).await?;
     Ok(())
 }
 
-/// Checks if product variants are in the system (MongoDB database populated with events).
+/// Checks if product variants versions are in the system (MongoDB database populated with events).
 ///
-/// Used before adding or modifying product variants / orders.
-async fn validate_product_variant_ids(
-    collection: &Collection<ProductVariant>,
+/// Used before creating orders.
+async fn validate_product_variant_version_ids(
+    collection: &Collection<ProductVariantVersion>,
     product_variant_ids: &HashSet<Uuid>,
 ) -> Result<()> {
     let product_variant_ids_vec: Vec<Uuid> = product_variant_ids.clone().into_iter().collect();
@@ -194,13 +138,13 @@ async fn validate_product_variant_ids(
         .await
     {
         Ok(cursor) => {
-            let product_variants: Vec<ProductVariant> = cursor.try_collect().await?;
+            let product_variants: Vec<ProductVariantVersion> = cursor.try_collect().await?;
             product_variant_ids_vec.iter().fold(Ok(()), |_, p| {
-                match product_variants.contains(&ProductVariant { _id: *p }) {
+                match product_variants.contains(&ProductVariantVersion { _id: *p }) {
                     true => Ok(()),
                     false => {
                         let message = format!(
-                            "Product variant with the UUID: `{}` is not present in the system.",
+                            "Product variant version with the UUID: `{}` is not present in the system.",
                             p
                         );
                         Err(Error::new(message))
@@ -209,14 +153,14 @@ async fn validate_product_variant_ids(
             })
         }
         Err(_) => Err(Error::new(
-            "Product variants with the specified UUIDs are not present in the system.",
+            "Product variant versions with the specified UUIDs are not present in the system.",
         )),
     }
 }
 
 /// Checks if user is in the system (MongoDB database populated with events).
 ///
-/// Used before adding orders.
+/// Used before creating orders.
 async fn validate_user(collection: &Collection<User>, id: Uuid) -> Result<()> {
     query_user(&collection, id).await.map(|_| ())
 }

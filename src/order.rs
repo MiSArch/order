@@ -1,9 +1,9 @@
-use std::{cmp::Ordering, collections::HashSet};
+use std::{cmp::Ordering, collections::{BTreeSet, HashSet}};
 
 use async_graphql::{
     connection::{Edge, EmptyFields}, ComplexObject, Enum, OutputType, Result, SimpleObject
 };
-use bson::datetime::DateTime;
+use bson::{datetime::DateTime, Bson};
 use bson::Uuid;
 use serde::{Deserialize, Serialize};
 
@@ -25,7 +25,7 @@ pub struct Order {
     pub order_status: OrderStatus,
     /// The rejection reason if status of the Order is `OrderStatus::Rejected`.
     pub rejection_reason: Option<RejectionReason>,
-    pub internal_order_items: HashSet<OrderItem>,
+    pub internal_order_items: BTreeSet<OrderItem>,
 }
 
 #[ComplexObject]
@@ -71,8 +71,23 @@ pub enum OrderStatus {
     Rejected,
 }
 
-#[derive(Debug, Enum, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+impl OrderStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            OrderStatus::Pending => "PENDING",
+            OrderStatus::Placed => "PLACED",
+            OrderStatus::Rejected => "REJECTED",
+        }
+    }
+}
 
+impl From<OrderStatus> for Bson {
+    fn from(value: OrderStatus) -> Self {
+        Bson::from(value.as_str())
+    }
+}
+
+#[derive(Debug, Enum, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RejectionReason {
     InvalidOrderData,
     InventoryReservationFailed

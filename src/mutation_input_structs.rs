@@ -1,6 +1,6 @@
 use async_graphql::{InputObject, SimpleObject};
 use bson::Uuid;
-use std::collections::HashSet;
+use std::{cmp::Ordering, collections::{BTreeSet, HashSet}};
 
 #[derive(SimpleObject, InputObject)]
 pub struct CreateOrderInput {
@@ -9,9 +9,10 @@ pub struct CreateOrderInput {
     /// UUIDs of product variants in order.
     pub product_variant_ids: HashSet<Uuid>,
     /// OrderItems of order.
-    pub order_items: HashSet<OrderItemInput>,
+    pub order_items: BTreeSet<OrderItemInput>,
 }
 
+#[derive(SimpleObject, InputObject, PartialEq, Eq)]
 pub struct OrderItemInput {
     /// UUID of product item associated with order item.
     pub product_item_id: Uuid,
@@ -23,4 +24,16 @@ pub struct OrderItemInput {
     pub shipment_method_id: Uuid,
     /// UUIDs of discounts to use with order item.
     pub discounts: HashSet<Uuid>,
+}
+
+impl PartialOrd for OrderItemInput {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.product_item_id.partial_cmp(&other.product_item_id)
+    }
+}
+
+impl Ord for OrderItemInput {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.product_item_id.cmp(&other.product_item_id)
+    }
 }
