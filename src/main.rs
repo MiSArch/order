@@ -1,4 +1,4 @@
-use std::{collections::HashSet, env, fs::File, io::Write};
+use std::{env, fs::File, io::Write};
 
 use async_graphql::{
     extensions::Logger, http::GraphiQLSource, EmptySubscription, SDLExportOptions, Schema,
@@ -18,9 +18,9 @@ use clap::{arg, command, Parser};
 use simple_logger::SimpleLogger;
 
 use log::info;
-use mongodb::{bson::DateTime, options::ClientOptions, Client, Collection, Database};
+use mongodb::{options::ClientOptions, Client, Database};
 
-use bson::Uuid;
+
 
 mod order;
 use order::Order;

@@ -49,12 +49,12 @@ impl OrderItem {
     async fn discounts(
         &self,
         #[graphql(desc = "Describes that the `first` N discounts should be retrieved.")]
-        first: Option<usize>,
+        _first: Option<usize>,
         #[graphql(
             desc = "Describes how many discounts should be skipped at the beginning."
         )]
-        skip: Option<usize>,
-        #[graphql(desc = "Specifies the order in which discounts are retrieved.")] order_by: Option<
+        _skip: Option<usize>,
+        #[graphql(desc = "Specifies the order in which discounts are retrieved.")] _order_by: Option<
             CommonOrderInput,
         >,
     ) -> Result<DiscountConnection> {

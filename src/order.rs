@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::{BTreeSet, HashSet}};
+use std::collections::BTreeSet;
 
 use async_graphql::{
     connection::{Edge, EmptyFields}, ComplexObject, Enum, OutputType, Result, SimpleObject
@@ -8,7 +8,7 @@ use bson::Uuid;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    foreign_types::ProductVariantVersion, order_datatypes::{CommonOrderInput, OrderDirection}, order_item::OrderItem, order_item_connection::OrderItemConnection, product_variant_version_connection::ProductVariantVersionConnection, user::User
+    order_datatypes::CommonOrderInput, order_item::OrderItem, order_item_connection::OrderItemConnection, user::User
 };
 
 /// The Order of a user.
@@ -34,12 +34,12 @@ impl Order {
     async fn order_items(
         &self,
         #[graphql(desc = "Describes that the `first` N order items should be retrieved.")]
-        first: Option<usize>,
+        _first: Option<usize>,
         #[graphql(
             desc = "Describes how many order items should be skipped at the beginning."
         )]
-        skip: Option<usize>,
-        #[graphql(desc = "Specifies the order in which order items are retrieved.")] order_by: Option<
+        _skip: Option<usize>,
+        #[graphql(desc = "Specifies the order in which order items are retrieved.")] _order_by: Option<
             CommonOrderInput,
         >,
     ) -> Result<OrderItemConnection> {
@@ -91,25 +91,6 @@ impl From<OrderStatus> for Bson {
 pub enum RejectionReason {
     InvalidOrderData,
     InventoryReservationFailed
-}
-
-/// Sorts vector of product variants according to BaseOrder.
-///
-/// * `product_variants` - Vector of product variants to sort.
-/// * `order_by` - Specifies order of sorted result.
-fn sort_product_variants(
-    product_variants: &mut Vec<ProductVariantVersion>,
-    order_by: Option<CommonOrderInput>,
-) {
-    let comparator: fn(&ProductVariantVersion, &ProductVariantVersion) -> bool =
-        match order_by.unwrap_or_default().direction.unwrap_or_default() {
-            OrderDirection::Asc => |x, y| x < y,
-            OrderDirection::Desc => |x, y| x > y,
-        };
-    product_variants.sort_by(|x, y| match comparator(x, y) {
-        true => Ordering::Less,
-        false => Ordering::Greater,
-    });
 }
 
 impl From<Order> for Uuid {
