@@ -59,17 +59,17 @@ pub struct HttpEventServiceState {
 pub async fn list_topic_subscriptions() -> Result<Json<Vec<Pubsub>>, StatusCode> {
     let pubsub_product_variant_version = Pubsub {
         pubsubname: "pubsub".to_string(),
-        topic: "catalog/product-variant/created".to_string(),
+        topic: "catalog/product-variant-version/created".to_string(),
         route: "/on-topic-event".to_string(),
     };
     let pubsub_product_item = Pubsub {
         pubsubname: "pubsub".to_string(),
-        topic: "inventory/product_item/created".to_string(),
+        topic: "inventory/product-item/created".to_string(),
         route: "/on-topic-event".to_string(),
     };
     let pubsub_tax_rate_version = Pubsub {
         pubsubname: "pubsub".to_string(),
-        topic: "tax/tax_rate_version/created".to_string(),
+        topic: "tax/tax-rate-version/created".to_string(),
         route: "/on-topic-event".to_string(),
     };
     let pubsub_discount = Pubsub {
@@ -79,7 +79,7 @@ pub async fn list_topic_subscriptions() -> Result<Json<Vec<Pubsub>>, StatusCode>
     };
     let pubsub_shipment_method = Pubsub {
         pubsubname: "pubsub".to_string(),
-        topic: "shipment/shipment_method/created".to_string(),
+        topic: "shipment/shipment-method/created".to_string(),
         route: "/on-topic-event".to_string(),
     };
     let pubsub_user = Pubsub {
@@ -109,16 +109,16 @@ pub async fn on_topic_event(
         "catalog/product-variant-version/created" => {
             add_to_mongodb(&state.product_variant_version_collection, event.data.id).await?
         }
-        "inventory/product_item/created" => {
+        "inventory/product-item/created" => {
             add_to_mongodb(&state.product_item_collection, event.data.id).await?
         }
-        "tax/tax_rate_version/created" => {
+        "tax/tax-rate-version/created" => {
             add_to_mongodb(&state.tax_rate_version_collection, event.data.id).await?
         }
         "discount/discount/created" => {
             add_to_mongodb(&state.discount_collection, event.data.id).await?
         }
-        "shipment/shipment_method/created" => {
+        "shipment/shipment-method/created" => {
             add_to_mongodb(&state.shipment_method_collection, event.data.id).await?
         }
         "user/user/created" => add_to_mongodb(&state.user_collection, event.data.id).await?,
