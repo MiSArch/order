@@ -13,7 +13,7 @@ use axum::{
     routing::{get, post},
     Router, Server,
 };
-use bson::Uuid;
+
 use clap::{arg, command, Parser};
 
 use simple_logger::SimpleLogger;
@@ -38,9 +38,7 @@ mod user;
 use user::User;
 
 mod http_event_service;
-use http_event_service::{
-    add_to_mongodb, list_topic_subscriptions, on_topic_event, HttpEventServiceState,
-};
+use http_event_service::{list_topic_subscriptions, on_topic_event, HttpEventServiceState};
 
 mod authentication;
 use authentication::AuthorizedUserHeader;
@@ -91,12 +89,6 @@ async fn build_dapr_router(db_client: Database) -> Router {
     let shipment_method_collection: mongodb::Collection<ShipmentMethod> =
         db_client.collection::<ShipmentMethod>("shipment_methods");
     let user_collection: mongodb::Collection<User> = db_client.collection::<User>("users");
-
-    add_to_mongodb(&product_variant_version_collection, Uuid::parse_str("df150d89-c19b-41f6-88c8-d5be77243b6d").unwrap()).await.unwrap();
-    add_to_mongodb(&product_item_collection, Uuid::parse_str("df150d89-c19b-41f6-88c8-d5be77243b6d").unwrap()).await.unwrap();
-    add_to_mongodb(&tax_rate_version_collection, Uuid::parse_str("df150d89-c19b-41f6-88c8-d5be77243b6d").unwrap()).await.unwrap();
-    add_to_mongodb(&discount_collection, Uuid::parse_str("df150d89-c19b-41f6-88c8-d5be77243b6d").unwrap()).await.unwrap();
-    add_to_mongodb(&shipment_method_collection, Uuid::parse_str("df150d89-c19b-41f6-88c8-d5be77243b6d").unwrap()).await.unwrap();
 
     // Define routes.
     let app = Router::new()
