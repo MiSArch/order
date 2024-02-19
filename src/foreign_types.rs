@@ -102,4 +102,3 @@ impl From<ShipmentMethod> for Bson {
         Bson::Document(doc!("_id": value._id))
     }
 }
-

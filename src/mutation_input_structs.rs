@@ -1,6 +1,9 @@
 use async_graphql::{InputObject, SimpleObject};
 use bson::Uuid;
-use std::{cmp::Ordering, collections::{BTreeSet, HashSet}};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeSet, HashSet},
+};
 
 #[derive(SimpleObject, InputObject)]
 pub struct CreateOrderInput {

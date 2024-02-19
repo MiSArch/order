@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
     authentication::authenticate_user,
     base_connection::{BaseConnection, FindResultWrapper},
-    order_datatypes::OrderOrderInput,
     order::Order,
     order_connection::OrderConnection,
+    order_datatypes::OrderOrderInput,
 };
 
 /// Type of a user owning orders.
@@ -26,8 +26,9 @@ impl User {
     async fn orders<'a>(
         &self,
         ctx: &Context<'a>,
-        #[graphql(desc = "Describes that the `first` N orders should be retrieved.")]
-        first: Option<u32>,
+        #[graphql(desc = "Describes that the `first` N orders should be retrieved.")] first: Option<
+            u32,
+        >,
         #[graphql(desc = "Describes how many orders should be skipped at the beginning.")]
         skip: Option<u64>,
         #[graphql(desc = "Specifies the order in which orders are retrieved.")] order_by: Option<

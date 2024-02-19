@@ -1,10 +1,15 @@
 use std::{cmp::Ordering, collections::HashSet};
 
-use async_graphql::{ComplexObject, SimpleObject, Result};
+use async_graphql::{ComplexObject, Result, SimpleObject};
 use bson::{DateTime, Uuid};
 use serde::{Deserialize, Serialize};
 
-use crate::{discount_connection::DiscountConnection, foreign_types::{Discount, ProductItem, ProductVariantVersion, ShipmentMethod, TaxRateVersion}, mutation_input_structs::OrderItemInput, order_datatypes::CommonOrderInput};
+use crate::{
+    discount_connection::DiscountConnection,
+    foreign_types::{Discount, ProductItem, ProductVariantVersion, ShipmentMethod, TaxRateVersion},
+    mutation_input_structs::OrderItemInput,
+    order_datatypes::CommonOrderInput,
+};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, SimpleObject)]
 #[graphql(complex)]
@@ -29,15 +34,27 @@ pub struct OrderItem {
 impl OrderItem {
     pub fn new(order_item_input: &OrderItemInput, created_at: DateTime) -> Self {
         // TODO: Calculate compensatable amount!
-        let internal_discounts = order_item_input.discounts.iter().map(|id| Discount { _id: *id }).collect();
+        let internal_discounts = order_item_input
+            .discounts
+            .iter()
+            .map(|id| Discount { _id: *id })
+            .collect();
         Self {
             _id: Uuid::new(),
             created_at,
-            product_item: ProductItem { _id: order_item_input.product_item_id },
-            product_variant_version: ProductVariantVersion { _id: order_item_input.product_variant_version_id },
-            tax_rate_version: TaxRateVersion { _id: order_item_input.tax_rate_version_id },
+            product_item: ProductItem {
+                _id: order_item_input.product_item_id,
+            },
+            product_variant_version: ProductVariantVersion {
+                _id: order_item_input.product_variant_version_id,
+            },
+            tax_rate_version: TaxRateVersion {
+                _id: order_item_input.tax_rate_version_id,
+            },
             compensatable_amount: 0,
-            shipment_method: ShipmentMethod { _id: order_item_input.shipment_method_id },
+            shipment_method: ShipmentMethod {
+                _id: order_item_input.shipment_method_id,
+            },
             internal_discounts,
         }
     }
@@ -54,9 +71,8 @@ impl OrderItem {
             desc = "Describes how many discounts should be skipped at the beginning."
         )]
         _skip: Option<usize>,
-        #[graphql(desc = "Specifies the order in which discounts are retrieved.")] _order_by: Option<
-            CommonOrderInput,
-        >,
+        #[graphql(desc = "Specifies the order in which discounts are retrieved.")]
+        _order_by: Option<CommonOrderInput>,
     ) -> Result<DiscountConnection> {
         todo!();
         /* let mut product_variants: Vec<ProductVariant> =

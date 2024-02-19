@@ -1,14 +1,16 @@
 use std::collections::BTreeSet;
 
 use async_graphql::{
-    connection::{Edge, EmptyFields}, ComplexObject, Enum, OutputType, Result, SimpleObject
+    connection::{Edge, EmptyFields},
+    ComplexObject, Enum, OutputType, Result, SimpleObject,
 };
-use bson::{datetime::DateTime, Bson};
 use bson::Uuid;
+use bson::{datetime::DateTime, Bson};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    order_datatypes::CommonOrderInput, order_item::OrderItem, order_item_connection::OrderItemConnection, user::User
+    order_datatypes::CommonOrderInput, order_item::OrderItem,
+    order_item_connection::OrderItemConnection, user::User,
 };
 
 /// The Order of a user.
@@ -35,13 +37,10 @@ impl Order {
         &self,
         #[graphql(desc = "Describes that the `first` N order items should be retrieved.")]
         _first: Option<usize>,
-        #[graphql(
-            desc = "Describes how many order items should be skipped at the beginning."
-        )]
+        #[graphql(desc = "Describes how many order items should be skipped at the beginning.")]
         _skip: Option<usize>,
-        #[graphql(desc = "Specifies the order in which order items are retrieved.")] _order_by: Option<
-            CommonOrderInput,
-        >,
+        #[graphql(desc = "Specifies the order in which order items are retrieved.")]
+        _order_by: Option<CommonOrderInput>,
     ) -> Result<OrderItemConnection> {
         todo!();
         /* let mut product_variants: Vec<ProductVariant> =
@@ -90,7 +89,7 @@ impl From<OrderStatus> for Bson {
 #[derive(Debug, Enum, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RejectionReason {
     InvalidOrderData,
-    InventoryReservationFailed
+    InventoryReservationFailed,
 }
 
 impl From<Order> for Uuid {

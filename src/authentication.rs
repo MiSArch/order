@@ -25,7 +25,9 @@ impl TryFrom<&HeaderMap> for AuthorizedUserHeader {
                 return Ok(authenticate_user_header);
             }
         }
-        Err(Error::new("Authentication failed. Authorized-User header is not set or could not be parsed."))
+        Err(Error::new(
+            "Authentication failed. Authorized-User header is not set or could not be parsed.",
+        ))
     }
 }
 
@@ -53,7 +55,9 @@ impl Role {
 pub fn authenticate_user(ctx: &Context, id: Uuid) -> Result<()> {
     match ctx.data::<AuthorizedUserHeader>() {
         Ok(authenticate_user_header) => check_permissions(&authenticate_user_header, id),
-        Err(_) => Err(Error::new("Authentication failed. Authorized-User header is not set or could not be parsed.")),
+        Err(_) => Err(Error::new(
+            "Authentication failed. Authorized-User header is not set or could not be parsed.",
+        )),
     }
 }
 
@@ -61,10 +65,7 @@ pub fn authenticate_user(ctx: &Context, id: Uuid) -> Result<()> {
 //
 // Permission is valid if the user has `Role::Buyer` and the same UUID as provided in the function parameter.
 // Permission is valid if the user has a permissive role: `user.is_permissive() == true`, regardless of the users UUID.
-pub fn check_permissions(
-    authenticate_user_header: &AuthorizedUserHeader,
-    id: Uuid,
-) -> Result<()> {
+pub fn check_permissions(authenticate_user_header: &AuthorizedUserHeader, id: Uuid) -> Result<()> {
     if authenticate_user_header
         .roles
         .iter()

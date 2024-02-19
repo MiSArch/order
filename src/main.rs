@@ -20,8 +20,6 @@ use simple_logger::SimpleLogger;
 use log::info;
 use mongodb::{options::ClientOptions, Client, Database};
 
-
-
 mod order;
 use order::Order;
 
@@ -45,13 +43,13 @@ mod authentication;
 use authentication::AuthorizedUserHeader;
 
 mod base_connection;
+mod discount_connection;
 mod foreign_types;
 mod mutation_input_structs;
-mod order_datatypes;
-mod product_variant_version_connection;
 mod order_connection;
+mod order_datatypes;
 mod order_item_connection;
-mod discount_connection;
+mod product_variant_version_connection;
 
 /// Builds the GraphiQL frontend.
 async fn graphiql() -> impl IntoResponse {

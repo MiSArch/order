@@ -16,10 +16,7 @@ use crate::order::OrderStatus;
 use crate::order_item::OrderItem;
 use crate::query::query_user;
 use crate::user::User;
-use crate::{
-    query::query_order,
-    order::Order,
-};
+use crate::{order::Order, query::query_order};
 
 /// Describes GraphQL order mutations.
 pub struct Mutation;
@@ -37,7 +34,11 @@ impl Mutation {
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         validate_input(db_client, &input).await?;
         let current_timestamp = DateTime::now();
-        let internal_order_items = input.order_items.iter().map(|i| OrderItem::new(i, current_timestamp)).collect();
+        let internal_order_items = input
+            .order_items
+            .iter()
+            .map(|i| OrderItem::new(i, current_timestamp))
+            .collect();
         let order = Order {
             _id: Uuid::new(),
             user: User { _id: input.user_id },
@@ -65,11 +66,7 @@ impl Mutation {
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         let order = query_order(&collection, id).await?;
         authenticate_user(&ctx, order.user._id)?;
-        set_status_placed(
-            &collection,
-            id
-        )
-        .await?;
+        set_status_placed(&collection, id).await?;
         query_order(&collection, id).await
     }
 }
@@ -94,10 +91,7 @@ fn uuid_from_bson(bson: Bson) -> Result<Uuid> {
 ///
 /// * `collection` - MongoDB collection to update.
 /// * `input` - `UpdateOrderInput`.
-async fn set_status_placed(
-    collection: &Collection<Order>,
-    id: Uuid,
-) -> Result<()> {
+async fn set_status_placed(collection: &Collection<Order>, id: Uuid) -> Result<()> {
     let result = collection
         .update_one(
             doc! {"_id": id },
@@ -106,10 +100,7 @@ async fn set_status_placed(
         )
         .await;
     if let Err(_) = result {
-        let message = format!(
-            "Placing order of id: `{}` failed in MongoDB.",
-            id
-        );
+        let message = format!("Placing order of id: `{}` failed in MongoDB.", id);
         return Err(Error::new(message));
     }
     Ok(())
@@ -120,7 +111,8 @@ async fn validate_input(db_client: &Database, input: &CreateOrderInput) -> Resul
     let product_variant_collection: Collection<ProductVariantVersion> =
         db_client.collection::<ProductVariantVersion>("product_variant_versions");
     let user_collection: Collection<User> = db_client.collection::<User>("users");
-    validate_product_variant_version_ids(&product_variant_collection, &input.product_variant_ids).await?;
+    validate_product_variant_version_ids(&product_variant_collection, &input.product_variant_ids)
+        .await?;
     validate_user(&user_collection, input.user_id).await?;
     Ok(())
 }
