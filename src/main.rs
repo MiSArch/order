@@ -77,7 +77,7 @@ async fn db_connection() -> Client {
 ///
 /// Adds endpoints to define pub/sub interaction with Dapr.
 async fn build_dapr_router(db_client: Database) -> Router {
-    let product_variant_collection: mongodb::Collection<ProductVariantVersion> =
+    let product_variant_version_collection: mongodb::Collection<ProductVariantVersion> =
         db_client.collection::<ProductVariantVersion>("product_variant_versions");
     let user_collection: mongodb::Collection<User> = db_client.collection::<User>("users");
 
@@ -86,7 +86,7 @@ async fn build_dapr_router(db_client: Database) -> Router {
         .route("/dapr/subscribe", get(list_topic_subscriptions))
         .route("/on-topic-event", post(on_topic_event))
         .with_state(HttpEventServiceState {
-            product_variant_collection,
+            product_variant_version_collection,
             user_collection,
         });
     app

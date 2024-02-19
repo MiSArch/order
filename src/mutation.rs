@@ -44,6 +44,7 @@ impl Mutation {
             user: User { _id: input.user_id },
             created_at: current_timestamp,
             order_status: OrderStatus::Pending,
+            placed_at: None,
             rejection_reason: None,
             internal_order_items,
         };

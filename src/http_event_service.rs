@@ -44,7 +44,7 @@ pub struct EventData {
 /// Service state containing database connections.
 #[derive(Clone)]
 pub struct HttpEventServiceState {
-    pub product_variant_collection: Collection<ProductVariantVersion>,
+    pub product_variant_version_collection: Collection<ProductVariantVersion>,
     pub user_collection: Collection<User>,
 }
 
@@ -55,12 +55,12 @@ pub async fn list_topic_subscriptions() -> Result<Json<Vec<Pubsub>>, StatusCode>
         topic: "user/user/created".to_string(),
         route: "/on-topic-event".to_string(),
     };
-    let pubsub_product_variant = Pubsub {
+    let pubsub_product_variant_version = Pubsub {
         pubsubname: "pubsub".to_string(),
         topic: "catalog/product-variant/created".to_string(),
         route: "/on-topic-event".to_string(),
     };
-    Ok(Json(vec![pubsub_user, pubsub_product_variant]))
+    Ok(Json(vec![pubsub_user, pubsub_product_variant_version]))
 }
 
 /// HTTP endpoint to receive events.
@@ -72,8 +72,12 @@ pub async fn on_topic_event(
     info!("{:?}", event);
 
     match event.topic.as_str() {
-        "catalog/product-variant/created" => {
-            add_product_variant_to_mongodb(state.product_variant_collection, event.data.id).await?
+        "catalog/product-variant-version/created" => {
+            add_product_variant_version_to_mongodb(
+                state.product_variant_version_collection,
+                event.data.id,
+            )
+            .await?
         }
         "user/user/created" => add_user_to_mongodb(state.user_collection, event.data.id).await?,
         _ => {
@@ -88,13 +92,13 @@ pub async fn on_topic_event(
     Ok(Json(TopicEventResponse::default()))
 }
 
-/// Add a newly created product variant to MongoDB.
-pub async fn add_product_variant_to_mongodb(
+/// Add a newly created product variant version to MongoDB.
+pub async fn add_product_variant_version_to_mongodb(
     collection: Collection<ProductVariantVersion>,
     id: Uuid,
 ) -> Result<(), StatusCode> {
-    let product_variant = ProductVariantVersion { _id: id };
-    match collection.insert_one(product_variant, None).await {
+    let product_variant_version = ProductVariantVersion { _id: id };
+    match collection.insert_one(product_variant_version, None).await {
         Ok(_) => Ok(()),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }

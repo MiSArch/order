@@ -25,6 +25,8 @@ pub struct Order {
     pub created_at: DateTime,
     /// The status of the Order.
     pub order_status: OrderStatus,
+    /// Timestamp of Order placement. `None` until Order is placed.
+    pub placed_at: Option<DateTime>,
     /// The rejection reason if status of the Order is `OrderStatus::Rejected`.
     pub rejection_reason: Option<RejectionReason>,
     pub internal_order_items: BTreeSet<OrderItem>,
@@ -63,6 +65,7 @@ impl Order {
     }
 }
 
+/// Describes if Order is placed, or yet pending. An Order can be rejected during its lifetime.
 #[derive(Debug, Enum, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OrderStatus {
     Pending,
@@ -86,6 +89,7 @@ impl From<OrderStatus> for Bson {
     }
 }
 
+/// Describes the reason why an Order was rejected, in case of rejection: `OrderStatus::Rejected`.
 #[derive(Debug, Enum, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RejectionReason {
     InvalidOrderData,
@@ -95,17 +99,5 @@ pub enum RejectionReason {
 impl From<Order> for Uuid {
     fn from(value: Order) -> Self {
         value._id
-    }
-}
-
-pub struct NodeWrapper<Node>(pub Node);
-
-impl<Node> From<NodeWrapper<Node>> for Edge<uuid::Uuid, Node, EmptyFields>
-where
-    Node: Into<uuid::Uuid> + OutputType + Clone,
-{
-    fn from(value: NodeWrapper<Node>) -> Self {
-        let uuid = Into::<uuid::Uuid>::into(value.0.clone());
-        Edge::new(uuid, value.0)
     }
 }
