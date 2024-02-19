@@ -29,7 +29,7 @@ impl Mutation {
         ctx: &Context<'a>,
         #[graphql(desc = "CreateOrderInput")] input: CreateOrderInput,
     ) -> Result<Order> {
-        authenticate_user(&ctx, input.user_id)?;
+        //authenticate_user(&ctx, input.user_id)?;
         let db_client = ctx.data_unchecked::<Database>();
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         validate_input(db_client, &input).await?;
@@ -93,10 +93,11 @@ fn uuid_from_bson(bson: Bson) -> Result<Uuid> {
 /// * `collection` - MongoDB collection to update.
 /// * `input` - `UpdateOrderInput`.
 async fn set_status_placed(collection: &Collection<Order>, id: Uuid) -> Result<()> {
+    let current_timestamp = DateTime::now();
     let result = collection
         .update_one(
             doc! {"_id": id },
-            doc! {"$set": {"status": OrderStatus::Placed}},
+            doc! {"$set": {"order_status": OrderStatus::Placed, "placed_at": current_timestamp}},
             None,
         )
         .await;
@@ -112,8 +113,7 @@ async fn validate_input(db_client: &Database, input: &CreateOrderInput) -> Resul
     let product_variant_collection: Collection<ProductVariantVersion> =
         db_client.collection::<ProductVariantVersion>("product_variant_versions");
     let user_collection: Collection<User> = db_client.collection::<User>("users");
-    validate_product_variant_version_ids(&product_variant_collection, &input.product_variant_ids)
-        .await?;
+    // TODO: Validate product variant versions.
     validate_user(&user_collection, input.user_id).await?;
     Ok(())
 }

@@ -13,6 +13,7 @@ use axum::{
     routing::{get, post},
     Router, Server,
 };
+use bson::Uuid;
 use clap::{arg, command, Parser};
 
 use simple_logger::SimpleLogger;
@@ -37,7 +38,10 @@ mod user;
 use user::User;
 
 mod http_event_service;
-use http_event_service::{list_topic_subscriptions, on_topic_event, HttpEventServiceState};
+use http_event_service::{
+    add_product_variant_version_to_mongodb, add_user_to_mongodb, list_topic_subscriptions,
+    on_topic_event, HttpEventServiceState,
+};
 
 mod authentication;
 use authentication::AuthorizedUserHeader;
@@ -80,6 +84,9 @@ async fn build_dapr_router(db_client: Database) -> Router {
     let product_variant_version_collection: mongodb::Collection<ProductVariantVersion> =
         db_client.collection::<ProductVariantVersion>("product_variant_versions");
     let user_collection: mongodb::Collection<User> = db_client.collection::<User>("users");
+
+    //add_product_variant_version_to_mongodb(product_variant_version_collection.clone(), Uuid::new()).await;
+    //add_user_to_mongodb(user_collection.clone(), Uuid::new()).await;
 
     // Define routes.
     let app = Router::new()

@@ -9,8 +9,6 @@ use std::{
 pub struct CreateOrderInput {
     /// UUID of user owning the order.
     pub user_id: Uuid,
-    /// UUIDs of product variants in order.
-    pub product_variant_ids: HashSet<Uuid>,
     /// OrderItems of order.
     pub order_items: BTreeSet<OrderItemInput>,
 }

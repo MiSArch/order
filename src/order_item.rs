@@ -8,7 +8,7 @@ use crate::{
     discount_connection::DiscountConnection,
     foreign_types::{Discount, ProductItem, ProductVariantVersion, ShipmentMethod, TaxRateVersion},
     mutation_input_structs::OrderItemInput,
-    order_datatypes::CommonOrderInput,
+    order_datatypes::{CommonOrderInput, OrderDirection},
 };
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, SimpleObject)]
@@ -66,32 +66,31 @@ impl OrderItem {
     async fn discounts(
         &self,
         #[graphql(desc = "Describes that the `first` N discounts should be retrieved.")]
-        _first: Option<usize>,
+        first: Option<usize>,
         #[graphql(
             desc = "Describes how many discounts should be skipped at the beginning."
         )]
-        _skip: Option<usize>,
-        #[graphql(desc = "Specifies the order in which discounts are retrieved.")]
-        _order_by: Option<CommonOrderInput>,
+        skip: Option<usize>,
+        #[graphql(desc = "Specifies the order in which discounts are retrieved.")] order_by: Option<
+            CommonOrderInput,
+        >,
     ) -> Result<DiscountConnection> {
-        todo!();
-        /* let mut product_variants: Vec<ProductVariant> =
-            self.internal_product_variants.clone().into_iter().collect();
-        sort_product_variants(&mut product_variants, order_by);
-        let total_count = product_variants.len();
+        let mut discounts: Vec<Discount> = self.internal_discounts.clone().into_iter().collect();
+        sort_discounts(&mut discounts, order_by);
+        let total_count = discounts.len();
         let definitely_skip = skip.unwrap_or(0);
         let definitely_first = first.unwrap_or(usize::MAX);
-        let product_variants_part: Vec<ProductVariant> = product_variants
+        let discounts_part: Vec<Discount> = discounts
             .into_iter()
             .skip(definitely_skip)
             .take(definitely_first)
             .collect();
-        let has_next_page = total_count > product_variants_part.len() + definitely_skip;
-        Ok(ProductVariantConnection {
-            nodes: product_variants_part,
+        let has_next_page = total_count > discounts_part.len() + definitely_skip;
+        Ok(DiscountConnection {
+            nodes: discounts_part,
             has_next_page,
             total_count: total_count as u64,
-        }) */
+        })
     }
 }
 
@@ -105,4 +104,20 @@ impl Ord for OrderItem {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self._id.cmp(&other._id)
     }
+}
+
+/// Sorts vector of discounts according to BaseOrder.
+///
+/// * `discounts` - Vector of discounts to sort.
+/// * `order_by` - Specifies order of sorted result.
+fn sort_discounts(discounts: &mut Vec<Discount>, order_by: Option<CommonOrderInput>) {
+    let comparator: fn(&Discount, &Discount) -> bool =
+        match order_by.unwrap_or_default().direction.unwrap_or_default() {
+            OrderDirection::Asc => |x, y| x < y,
+            OrderDirection::Desc => |x, y| x > y,
+        };
+    discounts.sort_by(|x, y| match comparator(x, y) {
+        true => Ordering::Less,
+        false => Ordering::Greater,
+    });
 }

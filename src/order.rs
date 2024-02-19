@@ -1,13 +1,12 @@
+use std::cmp::Ordering;
 use std::collections::BTreeSet;
 
-use async_graphql::{
-    connection::{Edge, EmptyFields},
-    ComplexObject, Enum, OutputType, Result, SimpleObject,
-};
+use async_graphql::{ComplexObject, Enum, Result, SimpleObject};
 use bson::Uuid;
 use bson::{datetime::DateTime, Bson};
 use serde::{Deserialize, Serialize};
 
+use crate::order_datatypes::OrderDirection;
 use crate::{
     order_datatypes::CommonOrderInput, order_item::OrderItem,
     order_item_connection::OrderItemConnection, user::User,
@@ -38,30 +37,29 @@ impl Order {
     async fn order_items(
         &self,
         #[graphql(desc = "Describes that the `first` N order items should be retrieved.")]
-        _first: Option<usize>,
+        first: Option<usize>,
         #[graphql(desc = "Describes how many order items should be skipped at the beginning.")]
-        _skip: Option<usize>,
+        skip: Option<usize>,
         #[graphql(desc = "Specifies the order in which order items are retrieved.")]
-        _order_by: Option<CommonOrderInput>,
+        order_by: Option<CommonOrderInput>,
     ) -> Result<OrderItemConnection> {
-        todo!();
-        /* let mut product_variants: Vec<ProductVariant> =
-            self.internal_product_variants.clone().into_iter().collect();
-        sort_product_variants(&mut product_variants, order_by);
-        let total_count = product_variants.len();
+        let mut order_items: Vec<OrderItem> =
+            self.internal_order_items.clone().into_iter().collect();
+        sort_order_items(&mut order_items, order_by);
+        let total_count = order_items.len();
         let definitely_skip = skip.unwrap_or(0);
         let definitely_first = first.unwrap_or(usize::MAX);
-        let product_variants_part: Vec<ProductVariant> = product_variants
+        let order_items_part: Vec<OrderItem> = order_items
             .into_iter()
             .skip(definitely_skip)
             .take(definitely_first)
             .collect();
-        let has_next_page = total_count > product_variants_part.len() + definitely_skip;
-        Ok(ProductVariantConnection {
-            nodes: product_variants_part,
+        let has_next_page = total_count > order_items_part.len() + definitely_skip;
+        Ok(OrderItemConnection {
+            nodes: order_items_part,
             has_next_page,
             total_count: total_count as u64,
-        }) */
+        })
     }
 }
 
@@ -76,9 +74,9 @@ pub enum OrderStatus {
 impl OrderStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
-            OrderStatus::Pending => "PENDING",
-            OrderStatus::Placed => "PLACED",
-            OrderStatus::Rejected => "REJECTED",
+            OrderStatus::Pending => "Pending",
+            OrderStatus::Placed => "Placed",
+            OrderStatus::Rejected => "Rejected",
         }
     }
 }
@@ -100,4 +98,20 @@ impl From<Order> for Uuid {
     fn from(value: Order) -> Self {
         value._id
     }
+}
+
+/// Sorts vector of order items according to BaseOrder.
+///
+/// * `order_items` - Vector of order items to sort.
+/// * `order_by` - Specifies order of sorted result.
+fn sort_order_items(order_items: &mut Vec<OrderItem>, order_by: Option<CommonOrderInput>) {
+    let comparator: fn(&OrderItem, &OrderItem) -> bool =
+        match order_by.unwrap_or_default().direction.unwrap_or_default() {
+            OrderDirection::Asc => |x, y| x < y,
+            OrderDirection::Desc => |x, y| x > y,
+        };
+    order_items.sort_by(|x, y| match comparator(x, y) {
+        true => Ordering::Less,
+        false => Ordering::Greater,
+    });
 }

@@ -87,12 +87,12 @@ pub async fn query_order(collection: &Collection<Order>, id: Uuid) -> Result<Ord
         Ok(maybe_order) => match maybe_order {
             Some(order) => Ok(order),
             None => {
-                let message = format!("OrderItem with UUID id: `{}` not found.", id);
+                let message = format!("Order with UUID id: `{}` not found.", id);
                 Err(Error::new(message))
             }
         },
         Err(_) => {
-            let message = format!("OrderItem with UUID id: `{}` not found.", id);
+            let message = format!("Order with UUID id: `{}` not found.", id);
             Err(Error::new(message))
         }
     }
