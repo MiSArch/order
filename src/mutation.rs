@@ -36,7 +36,7 @@ impl Mutation {
         ctx: &Context<'a>,
         #[graphql(desc = "CreateOrderInput")] input: CreateOrderInput,
     ) -> Result<Order> {
-        //authenticate_user(&ctx, input.user_id)?;
+        authenticate_user(&ctx, input.user_id)?;
         let db_client = ctx.data_unchecked::<Database>();
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         validate_input(db_client, &input).await?;
