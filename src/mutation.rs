@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 use async_graphql::{Context, Error, Object, Result};
 use bson::Bson;
 use bson::Uuid;
+use futures::future::join_all;
 use futures::TryStreamExt;
 use mongodb::{
     bson::{doc, DateTime},
@@ -12,11 +13,10 @@ use mongodb::{
 use serde::Deserialize;
 
 use crate::authentication::authenticate_user;
-use crate::foreign_types::Discount;
+use crate::foreign_types::Coupon;
 use crate::foreign_types::ProductItem;
 use crate::foreign_types::ProductVariantVersion;
 use crate::foreign_types::ShipmentMethod;
-use crate::foreign_types::TaxRateVersion;
 use crate::mutation_input_structs::CreateOrderInput;
 use crate::mutation_input_structs::OrderItemInput;
 use crate::order::OrderStatus;
@@ -41,11 +41,8 @@ impl Mutation {
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         validate_input(db_client, &input).await?;
         let current_timestamp = DateTime::now();
-        let internal_order_items = input
-            .order_items
-            .iter()
-            .map(|i| OrderItem::new(i, current_timestamp))
-            .collect();
+        let internal_order_items =
+            create_internal_order_items(&db_client, input.order_items, current_timestamp).await?;
         let order = Order {
             _id: Uuid::new(),
             user: User { _id: input.user_id },
@@ -134,24 +131,18 @@ async fn validate_order_items(
         db_client.collection::<ProductVariantVersion>("product_variant_versions");
     let product_item_collection: mongodb::Collection<ProductItem> =
         db_client.collection::<ProductItem>("product_items");
-    let tax_rate_version_collection: mongodb::Collection<TaxRateVersion> =
-        db_client.collection::<TaxRateVersion>("tax_rate_versions");
     let shipment_method_collection: mongodb::Collection<ShipmentMethod> =
         db_client.collection::<ShipmentMethod>("shipment_methods");
     let product_variant_version_ids = order_items
         .iter()
         .map(|o| o.product_variant_version_id)
         .collect();
-    let product_item_ids = order_items.iter().map(|o| o.product_item_id).collect();
-    let tax_rate_version_ids = order_items.iter().map(|o| o.tax_rate_version_id).collect();
     let shipment_method_ids = order_items.iter().map(|o| o.shipment_method_id).collect();
     validate_objects(
         &product_variant_version_collection,
         product_variant_version_ids,
     )
     .await?;
-    validate_objects(&product_item_collection, product_item_ids).await?;
-    validate_objects(&tax_rate_version_collection, tax_rate_version_ids).await?;
     validate_objects(&shipment_method_collection, shipment_method_ids).await?;
     validate_discounts(&db_client, &order_items).await?;
     Ok(())
@@ -164,14 +155,33 @@ async fn validate_discounts(
     db_client: &Database,
     order_items: &BTreeSet<OrderItemInput>,
 ) -> Result<()> {
-    let discount_collection: mongodb::Collection<Discount> =
-        db_client.collection::<Discount>("discounts");
+    let discount_collection: mongodb::Collection<Coupon> =
+        db_client.collection::<Coupon>("discounts");
     let discount_ids: Vec<Uuid> = order_items
         .iter()
-        .map(|o| o.discounts.clone())
+        .map(|o| o.coupons.clone())
         .flatten()
         .collect();
     validate_objects(&discount_collection, discount_ids).await
+}
+
+/// Creates OrderItems from OrderItemInputs.
+///
+/// Used before creating orders.
+async fn create_internal_order_items(
+    db_client: &Database,
+    order_item_input: BTreeSet<OrderItemInput>,
+    current_timestamp: DateTime,
+) -> Result<Vec<OrderItem>> {
+    let product_variant_version_collection: Collection<ProductVariantVersion> =
+        db_client.collection::<ProductVariantVersion>("product_variant_version");
+    let internal_order_item_futures = order_item_input
+        .iter()
+        .map(|i| OrderItem::try_new(i, &product_variant_version_collection, current_timestamp));
+    let internal_order_item_results = join_all(internal_order_item_futures).await;
+    internal_order_item_results
+        .into_iter()
+        .collect::<Result<Vec<OrderItem>>>()
 }
 
 /// Checks if a single object is in the system (MongoDB database populated with events).
@@ -187,32 +197,33 @@ async fn validate_object<T: for<'a> Deserialize<'a> + Unpin + Send + Sync>(
 /// Checks if all objects are in the system (MongoDB database populated with events).
 ///
 /// Used before creating orders.
-async fn validate_objects<
-    T: for<'b> Deserialize<'b> + Unpin + Send + Sync + PartialEq + From<Uuid>,
->(
+async fn validate_objects<T: for<'b> Deserialize<'b> + Unpin + Send + Sync + PartialEq + Clone>(
     collection: &Collection<T>,
     object_ids: Vec<Uuid>,
-) -> Result<()> {
+) -> Result<()>
+where
+    Uuid: From<T>,
+{
     match collection
         .find(doc! {"_id": { "$in": &object_ids } }, None)
         .await
     {
         Ok(cursor) => {
-            let product_variants: Vec<T> = cursor.try_collect().await?;
-            object_ids.iter().fold(Ok(()), |o, p| {
-                let object = T::from(*p);
-                match product_variants.contains(&object) {
+            let objects: Vec<T> = cursor.try_collect().await?;
+            let ids: Vec<Uuid> = objects.iter().map(|o| Uuid::from(o.clone())).collect();
+            object_ids
+                .iter()
+                .fold(Ok(()), |o, id| match ids.contains(id) {
                     true => o.and(Ok(())),
                     false => {
                         let message = format!(
                             "{} with UUID: `{}` is not present in the system.",
                             type_name::<T>(),
-                            p
+                            id
                         );
                         Err(Error::new(message))
                     }
-                }
-            })
+                })
         }
         Err(_) => {
             let message = format!(

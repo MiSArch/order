@@ -1,5 +1,4 @@
 use std::cmp::Ordering;
-use std::collections::BTreeSet;
 
 use async_graphql::{ComplexObject, Enum, Result, SimpleObject};
 use bson::Uuid;
@@ -28,7 +27,7 @@ pub struct Order {
     pub placed_at: Option<DateTime>,
     /// The rejection reason if status of the Order is `OrderStatus::Rejected`.
     pub rejection_reason: Option<RejectionReason>,
-    pub internal_order_items: BTreeSet<OrderItem>,
+    pub internal_order_items: Vec<OrderItem>,
 }
 
 #[ComplexObject]

@@ -2,15 +2,21 @@ use std::{cmp::Ordering, collections::HashSet};
 
 use async_graphql::{ComplexObject, Result, SimpleObject};
 use bson::{DateTime, Uuid};
+use mongodb::Collection;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     discount_connection::DiscountConnection,
-    foreign_types::{Discount, ProductItem, ProductVariantVersion, ShipmentMethod, TaxRateVersion},
+    foreign_types::{Discount, ProductItem, ProductVariantVersion, ShipmentMethod},
     mutation_input_structs::OrderItemInput,
     order_datatypes::{CommonOrderInput, OrderDirection},
+    query::query_object,
 };
 
+/// Describes an OrderItem of an Order.
+///
+/// `product_item` is set to None as long as `OrderStatus::Pending`.
+/// Must contain a ProductItem when `OrderStatus::Placed` or `OrderStatus::Rejected`.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, SimpleObject)]
 #[graphql(complex)]
 pub struct OrderItem {
@@ -19,11 +25,11 @@ pub struct OrderItem {
     /// Timestamp when OrderItem was created.
     pub created_at: DateTime,
     /// Product item associated with OrderItem.
-    pub product_item: ProductItem,
+    pub product_item: Option<ProductItem>,
     /// Product variant version associated with OrderItem.
     pub product_variant_version: ProductVariantVersion,
-    /// Tax rate version associated with OrderItem.
-    pub tax_rate_version: TaxRateVersion,
+    /// Specifies the quantity of the OrderItem.
+    pub quantity: u64,
     /// Total cost of product item, which can also be refunded.
     pub compensatable_amount: u64,
     /// Shipment method of order item.
@@ -32,31 +38,42 @@ pub struct OrderItem {
 }
 
 impl OrderItem {
-    pub fn new(order_item_input: &OrderItemInput, created_at: DateTime) -> Self {
-        // TODO: Calculate compensatable amount!
-        let internal_discounts = order_item_input
-            .discounts
-            .iter()
-            .map(|id| Discount { _id: *id })
-            .collect();
-        Self {
+    /// Constructor for OrderItems.
+    ///
+    /// Queries ProductVariantVersion from MongoDB.
+    /// Correctness: ProductVariantVersion exists, as its precondition is the successful OrderItemInput validation. -> `unwrap()` is uncritical.
+    pub async fn try_new(
+        order_item_input: &OrderItemInput,
+        collection: &Collection<ProductVariantVersion>,
+        created_at: DateTime,
+    ) -> Result<Self> {
+        check_product_item_availability(order_item_input.product_variant_version_id).await?;
+        let internal_discounts = query_discounts(&order_item_input.coupons).await?;
+        let product_variant_version =
+            query_object(&collection, order_item_input.product_variant_version_id)
+                .await
+                .unwrap();
+        let shipment_fee = query_shipment_fee(
+            order_item_input.product_variant_version_id,
+            order_item_input.quantity,
+        );
+        let compensatable_amount = calculate_compensatable_amount(
+            product_variant_version,
+            &internal_discounts,
+            shipment_fee,
+        );
+        Ok(Self {
             _id: Uuid::new(),
             created_at,
-            product_item: ProductItem {
-                _id: order_item_input.product_item_id,
-            },
-            product_variant_version: ProductVariantVersion {
-                _id: order_item_input.product_variant_version_id,
-            },
-            tax_rate_version: TaxRateVersion {
-                _id: order_item_input.tax_rate_version_id,
-            },
-            compensatable_amount: 0,
+            product_item: None,
+            product_variant_version,
+            quantity: order_item_input.quantity,
+            compensatable_amount,
             shipment_method: ShipmentMethod {
                 _id: order_item_input.shipment_method_id,
             },
             internal_discounts,
-        }
+        })
     }
 }
 
@@ -120,4 +137,28 @@ fn sort_discounts(discounts: &mut Vec<Discount>, order_by: Option<CommonOrderInp
         true => Ordering::Less,
         false => Ordering::Greater,
     });
+}
+
+/// Queries inventory service availability of ProductVariantVersion.
+async fn check_product_item_availability(product_variant_version_id: Uuid) -> Result<()> {
+    todo!();
+}
+
+/// Queries Discounts for Coupons from discount service.
+async fn query_discounts(coupons: &HashSet<Uuid>) -> Result<HashSet<Discount>> {
+    todo!()
+}
+
+/// Queries the shipment fee for a ProductVariantVersion of a specific quantity.
+fn query_shipment_fee(product_variant_version_id: Uuid, quantity: u64) -> u64 {
+    todo!()
+}
+
+/// Applies fees and discounts to calculate the compensatable amount of an OrderItem.
+fn calculate_compensatable_amount(
+    product_variant_version: ProductVariantVersion,
+    internal_discounts: &HashSet<Discount>,
+    shipment_fee: u64,
+) -> u64 {
+    todo!()
 }

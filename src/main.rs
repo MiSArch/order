@@ -32,13 +32,16 @@ use query::Query;
 mod mutation;
 use mutation::Mutation;
 
-use foreign_types::{Discount, ProductItem, ProductVariantVersion, ShipmentMethod, TaxRateVersion};
+use foreign_types::{Coupon, ProductVariantVersion, ShipmentMethod};
 
 mod user;
 use user::User;
 
 mod http_event_service;
-use http_event_service::{list_topic_subscriptions, on_topic_event, HttpEventServiceState};
+use http_event_service::{
+    list_topic_subscriptions, on_id_creation_event, on_product_variant_version_creation_event,
+    HttpEventServiceState,
+};
 
 mod authentication;
 use authentication::AuthorizedUserHeader;
@@ -80,12 +83,7 @@ async fn db_connection() -> Client {
 async fn build_dapr_router(db_client: Database) -> Router {
     let product_variant_version_collection: mongodb::Collection<ProductVariantVersion> =
         db_client.collection::<ProductVariantVersion>("product_variant_versions");
-    let product_item_collection: mongodb::Collection<ProductItem> =
-        db_client.collection::<ProductItem>("product_items");
-    let tax_rate_version_collection: mongodb::Collection<TaxRateVersion> =
-        db_client.collection::<TaxRateVersion>("tax_rate_versions");
-    let discount_collection: mongodb::Collection<Discount> =
-        db_client.collection::<Discount>("discounts");
+    let coupon_collection: mongodb::Collection<Coupon> = db_client.collection::<Coupon>("coupons");
     let shipment_method_collection: mongodb::Collection<ShipmentMethod> =
         db_client.collection::<ShipmentMethod>("shipment_methods");
     let user_collection: mongodb::Collection<User> = db_client.collection::<User>("users");
@@ -93,12 +91,14 @@ async fn build_dapr_router(db_client: Database) -> Router {
     // Define routes.
     let app = Router::new()
         .route("/dapr/subscribe", get(list_topic_subscriptions))
-        .route("/on-topic-event", post(on_topic_event))
+        .route("/on-id-creation-event", post(on_id_creation_event))
+        .route(
+            "/on-product-variant-version-creation-event",
+            post(on_product_variant_version_creation_event),
+        )
         .with_state(HttpEventServiceState {
             product_variant_version_collection,
-            product_item_collection,
-            tax_rate_version_collection,
-            discount_collection,
+            coupon_collection,
             shipment_method_collection,
             user_collection,
         });
