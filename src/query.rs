@@ -4,6 +4,7 @@ use crate::{authentication::authenticate_user, order_item::OrderItem, user::User
 use async_graphql::{Context, Error, Object, Result};
 
 use bson::Uuid;
+use futures::TryStreamExt;
 use mongodb::{bson::doc, Collection, Database};
 use serde::Deserialize;
 
@@ -47,7 +48,6 @@ impl Query {
         let db_client = ctx.data_unchecked::<Database>();
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         let order = query_object(&collection, id).await?;
-        authenticate_user(&ctx, order.user._id)?;
         Ok(order)
     }
 
@@ -119,6 +119,33 @@ pub async fn query_object<T: for<'a> Deserialize<'a> + Unpin + Send + Sync>(
         },
         Err(_) => {
             let message = format!("{} with UUID id: `{}` not found.", type_name::<T>(), id);
+            Err(Error::new(message))
+        }
+    }
+}
+
+/// Shared function to query objects: T from a MongoDB collection of object: T.
+///
+/// * `connection` - MongoDB database connection.
+/// * `ids` - UUIDs of objects.
+pub async fn query_objects<T: for<'a> Deserialize<'a> + Unpin + Send + Sync>(
+    collection: &Collection<T>,
+    object_ids: &Vec<Uuid>,
+) -> Result<Vec<T>> {
+    match collection
+        .find(doc! {"_id": { "$in": &object_ids } }, None)
+        .await
+    {
+        Ok(cursor) => {
+            let objects: Vec<T> = cursor.try_collect().await?;
+            Ok(objects)
+        }
+        Err(_) => {
+            let message = format!(
+                "{} with UUIDs: `{:?}` not found.",
+                type_name::<T>(),
+                object_ids
+            );
             Err(Error::new(message))
         }
     }

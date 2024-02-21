@@ -1,0 +1,16 @@
+query GetShoppingCartProductVariantIds($representations: [_Any!]!) {
+    _entities(representations: $representations) {
+        __typename
+        ... on User {
+            shoppingcart {
+                shoppingcartItems {
+                    nodes {
+                        productVariant {
+                            id
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

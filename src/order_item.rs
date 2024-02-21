@@ -2,15 +2,16 @@ use std::{cmp::Ordering, collections::HashSet};
 
 use async_graphql::{ComplexObject, Result, SimpleObject};
 use bson::{DateTime, Uuid};
-use mongodb::Collection;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     discount_connection::DiscountConnection,
-    foreign_types::{Discount, ProductItem, ProductVariantVersion, ShipmentMethod},
+    foreign_types::{
+        Discount, ProductItem, ProductVariantVersion, ShipmentMethod, ShoppingCartItem,
+        TaxRateVersion,
+    },
     mutation_input_structs::OrderItemInput,
     order_datatypes::{CommonOrderInput, OrderDirection},
-    query::query_object,
 };
 
 /// Describes an OrderItem of an Order.
@@ -28,8 +29,12 @@ pub struct OrderItem {
     pub product_item: Option<ProductItem>,
     /// Product variant version associated with OrderItem.
     pub product_variant_version: ProductVariantVersion,
+    /// Tax rate version associated with OrderItem.
+    pub tax_rate_version: TaxRateVersion,
+    /// Shopping cart item associated with OrderItem.
+    pub shopping_cart_item: ShoppingCartItem,
     /// Specifies the quantity of the OrderItem.
-    pub quantity: u64,
+    pub count: u64,
     /// Total cost of product item, which can also be refunded.
     pub compensatable_amount: u64,
     /// Shipment method of order item.
@@ -42,38 +47,36 @@ impl OrderItem {
     ///
     /// Queries ProductVariantVersion from MongoDB.
     /// Correctness: ProductVariantVersion exists, as its precondition is the successful OrderItemInput validation. -> `unwrap()` is uncritical.
-    pub async fn try_new(
+    pub fn new(
         order_item_input: &OrderItemInput,
-        collection: &Collection<ProductVariantVersion>,
-        created_at: DateTime,
-    ) -> Result<Self> {
-        check_product_item_availability(order_item_input.product_variant_version_id).await?;
-        let internal_discounts = query_discounts(&order_item_input.coupons).await?;
-        let product_variant_version =
-            query_object(&collection, order_item_input.product_variant_version_id)
-                .await
-                .unwrap();
-        let shipment_fee = query_shipment_fee(
-            order_item_input.product_variant_version_id,
-            order_item_input.quantity,
-        );
+        product_variant_version: ProductVariantVersion,
+        tax_rate_version: TaxRateVersion,
+        internal_discounts: HashSet<Discount>,
+        shipment_fee: u64,
+        current_timestamp: DateTime,
+    ) -> Self {
         let compensatable_amount = calculate_compensatable_amount(
             product_variant_version,
             &internal_discounts,
             shipment_fee,
         );
-        Ok(Self {
+        let shopping_cart_item = ShoppingCartItem {
+            _id: order_item_input.shopping_cart_item_id,
+        };
+        Self {
             _id: Uuid::new(),
-            created_at,
+            created_at: current_timestamp,
             product_item: None,
             product_variant_version,
-            quantity: order_item_input.quantity,
+            tax_rate_version,
+            shopping_cart_item,
+            count: order_item_input.quantity,
             compensatable_amount,
             shipment_method: ShipmentMethod {
                 _id: order_item_input.shipment_method_id,
             },
             internal_discounts,
-        })
+        }
     }
 }
 
@@ -137,21 +140,6 @@ fn sort_discounts(discounts: &mut Vec<Discount>, order_by: Option<CommonOrderInp
         true => Ordering::Less,
         false => Ordering::Greater,
     });
-}
-
-/// Queries inventory service availability of ProductVariantVersion.
-async fn check_product_item_availability(product_variant_version_id: Uuid) -> Result<()> {
-    todo!();
-}
-
-/// Queries Discounts for Coupons from discount service.
-async fn query_discounts(coupons: &HashSet<Uuid>) -> Result<HashSet<Discount>> {
-    todo!()
-}
-
-/// Queries the shipment fee for a ProductVariantVersion of a specific quantity.
-fn query_shipment_fee(product_variant_version_id: Uuid, quantity: u64) -> u64 {
-    todo!()
 }
 
 /// Applies fees and discounts to calculate the compensatable amount of an OrderItem.

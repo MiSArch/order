@@ -10,13 +10,13 @@ pub struct CreateOrderInput {
     /// UUID of user owning the order.
     pub user_id: Uuid,
     /// OrderItems of order.
-    pub order_items: BTreeSet<OrderItemInput>,
+    pub order_item_inputs: BTreeSet<OrderItemInput>,
 }
 
 #[derive(SimpleObject, InputObject, PartialEq, Eq)]
 pub struct OrderItemInput {
-    /// UUID of product variant version associated with order item.
-    pub product_variant_version_id: Uuid,
+    /// UUID of shopping cart item associated with order item.
+    pub shopping_cart_item_id: Uuid,
     /// Specifies the quantity of the OrderItem.
     pub quantity: u64,
     /// UUID of shipment method to use with order item.
@@ -27,14 +27,13 @@ pub struct OrderItemInput {
 
 impl PartialOrd for OrderItemInput {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.product_variant_version_id
-            .partial_cmp(&other.product_variant_version_id)
+        self.shopping_cart_item_id
+            .partial_cmp(&other.shopping_cart_item_id)
     }
 }
 
 impl Ord for OrderItemInput {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.product_variant_version_id
-            .cmp(&other.product_variant_version_id)
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.shopping_cart_item_id.cmp(&other.shopping_cart_item_id)
     }
 }

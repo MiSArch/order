@@ -1,11 +1,13 @@
 use std::any::type_name;
 use std::collections::BTreeSet;
+use std::collections::HashSet;
 
 use async_graphql::{Context, Error, Object, Result};
 use bson::Bson;
 use bson::Uuid;
-use futures::future::join_all;
 use futures::TryStreamExt;
+use graphql_client::GraphQLQuery;
+use graphql_client::Response;
 use mongodb::{
     bson::{doc, DateTime},
     Collection, Database,
@@ -14,14 +16,19 @@ use serde::Deserialize;
 
 use crate::authentication::authenticate_user;
 use crate::foreign_types::Coupon;
+use crate::foreign_types::Discount;
 use crate::foreign_types::ProductItem;
+use crate::foreign_types::ProductVariant;
 use crate::foreign_types::ProductVariantVersion;
 use crate::foreign_types::ShipmentMethod;
+use crate::foreign_types::TaxRate;
+use crate::foreign_types::TaxRateVersion;
 use crate::mutation_input_structs::CreateOrderInput;
 use crate::mutation_input_structs::OrderItemInput;
 use crate::order::OrderStatus;
 use crate::order_item::OrderItem;
 use crate::query::query_object;
+use crate::query::query_objects;
 use crate::user::User;
 use crate::{order::Order, query::query_order};
 
@@ -42,7 +49,8 @@ impl Mutation {
         validate_input(db_client, &input).await?;
         let current_timestamp = DateTime::now();
         let internal_order_items =
-            create_internal_order_items(&db_client, input.order_items, current_timestamp).await?;
+            create_internal_order_items(&db_client, input.order_item_inputs, current_timestamp)
+                .await?;
         let order = Order {
             _id: Uuid::new(),
             user: User { _id: input.user_id },
@@ -78,7 +86,7 @@ impl Mutation {
 
 /// Extracts UUID from Bson.
 ///
-/// Adding a order returns a UUID in a Bson document. This function helps to extract the UUID.
+/// Creating a order returns a UUID in a Bson document. This function helps to extract the UUID.
 fn uuid_from_bson(bson: Bson) -> Result<Uuid> {
     match bson {
         Bson::Binary(id) => Ok(id.to_uuid()?),
@@ -116,7 +124,7 @@ async fn set_status_placed(collection: &Collection<Order>, id: Uuid) -> Result<(
 async fn validate_input(db_client: &Database, input: &CreateOrderInput) -> Result<()> {
     let user_collection: mongodb::Collection<User> = db_client.collection::<User>("users");
     validate_object(&user_collection, input.user_id).await?;
-    validate_order_items(&db_client, &input.order_items).await?;
+    validate_order_items(&db_client, &input.order_item_inputs).await?;
     Ok(())
 }
 
@@ -125,26 +133,21 @@ async fn validate_input(db_client: &Database, input: &CreateOrderInput) -> Resul
 /// Used before creating orders.
 async fn validate_order_items(
     db_client: &Database,
-    order_items: &BTreeSet<OrderItemInput>,
+    order_item_inputs: &BTreeSet<OrderItemInput>,
 ) -> Result<()> {
+    // TODO: Fix validation.
     let product_variant_version_collection: mongodb::Collection<ProductVariantVersion> =
         db_client.collection::<ProductVariantVersion>("product_variant_versions");
     let product_item_collection: mongodb::Collection<ProductItem> =
         db_client.collection::<ProductItem>("product_items");
     let shipment_method_collection: mongodb::Collection<ShipmentMethod> =
         db_client.collection::<ShipmentMethod>("shipment_methods");
-    let product_variant_version_ids = order_items
+    let shipment_method_ids = order_item_inputs
         .iter()
-        .map(|o| o.product_variant_version_id)
+        .map(|o| o.shipment_method_id)
         .collect();
-    let shipment_method_ids = order_items.iter().map(|o| o.shipment_method_id).collect();
-    validate_objects(
-        &product_variant_version_collection,
-        product_variant_version_ids,
-    )
-    .await?;
     validate_objects(&shipment_method_collection, shipment_method_ids).await?;
-    validate_discounts(&db_client, &order_items).await?;
+    validate_discounts(&db_client, &order_item_inputs).await?;
     Ok(())
 }
 
@@ -153,11 +156,11 @@ async fn validate_order_items(
 /// Used before creating orders.
 async fn validate_discounts(
     db_client: &Database,
-    order_items: &BTreeSet<OrderItemInput>,
+    order_item_inputs: &BTreeSet<OrderItemInput>,
 ) -> Result<()> {
     let discount_collection: mongodb::Collection<Coupon> =
         db_client.collection::<Coupon>("discounts");
-    let discount_ids: Vec<Uuid> = order_items
+    let discount_ids: Vec<Uuid> = order_item_inputs
         .iter()
         .map(|o| o.coupons.clone())
         .flatten()
@@ -170,18 +173,159 @@ async fn validate_discounts(
 /// Used before creating orders.
 async fn create_internal_order_items(
     db_client: &Database,
-    order_item_input: BTreeSet<OrderItemInput>,
+    order_item_inputs: BTreeSet<OrderItemInput>,
     current_timestamp: DateTime,
 ) -> Result<Vec<OrderItem>> {
-    let product_variant_version_collection: Collection<ProductVariantVersion> =
-        db_client.collection::<ProductVariantVersion>("product_variant_version");
-    let internal_order_item_futures = order_item_input
+    let product_variant_ids = query_product_variant_ids(&order_item_inputs).await?;
+    let product_variant_versions =
+        query_current_product_variant_versions(db_client, &product_variant_ids).await?;
+    check_product_items_availability(&product_variant_versions).await?;
+    let tax_rate_versions =
+        query_current_tax_rate_versions(db_client, &product_variant_versions).await?;
+    let discounts = query_discounts(&order_item_inputs, &product_variant_ids).await?;
+    let shipment_fees = query_shipment_fees(&order_item_inputs, &product_variant_versions).await?;
+    let internal_order_items: Vec<OrderItem> = order_item_inputs
         .iter()
-        .map(|i| OrderItem::try_new(i, &product_variant_version_collection, current_timestamp));
-    let internal_order_item_results = join_all(internal_order_item_futures).await;
-    internal_order_item_results
-        .into_iter()
-        .collect::<Result<Vec<OrderItem>>>()
+        .zip(product_variant_versions)
+        .zip(tax_rate_versions)
+        .zip(discounts)
+        .zip(shipment_fees)
+        .map(
+            |(
+                (((order_item_input, product_variant_version), tax_rate_version), discounts),
+                shipment_fee,
+            )| {
+                OrderItem::new(
+                    order_item_input,
+                    product_variant_version,
+                    tax_rate_version,
+                    discounts,
+                    shipment_fee,
+                    current_timestamp,
+                )
+            },
+        )
+        .collect();
+    Ok(internal_order_items)
+}
+
+// Defines a custom scalar from GraphQL schema.
+// TODO: This is hacky and i do not know which type this should be in a strongly typed language like Rust.
+type _Any = String;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "schemas/inventory.graphql",
+    query_path = "queries/get_unreserved_product_item_counts.graphql",
+    response_derives = "Debug"
+)]
+struct GetUnreservedProductItemCounts;
+
+/// Checks if product items are available in the inventory service.
+async fn check_product_items_availability(
+    product_variant_versions: &Vec<ProductVariantVersion>,
+) -> Result<()> {
+    let variables = get_unreserved_product_item_counts::Variables {
+        representations: vec![],
+    };
+
+    let request_body = GetUnreservedProductItemCounts::build_query(variables);
+
+    let client = reqwest::Client::new();
+    let res = client.post("/graphql").json(&request_body).send().await?;
+    let response_body: Response<get_unreserved_product_item_counts::ResponseData> =
+        res.json().await?;
+    println!("{:#?}", response_body);
+    Ok(())
+}
+
+// Defines a custom scalar from GraphQL schema.
+type UUID = Uuid;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "schemas/shoppingcart.graphql",
+    query_path = "queries/get_shopping_cart_product_variant_ids.graphql",
+    response_derives = "Debug"
+)]
+struct GetShoppingCartProductVariantIds;
+
+/// Queries product variants from shopping cart item ids from shopping cart service.
+async fn query_product_variant_ids(
+    order_item_inputs: &BTreeSet<OrderItemInput>,
+) -> Result<Vec<Uuid>> {
+    let variables = get_shopping_cart_product_variant_ids::Variables {
+        representations: vec![],
+    };
+
+    let request_body = GetShoppingCartProductVariantIds::build_query(variables);
+
+    let client = reqwest::Client::new();
+    let res = client.post("/graphql").json(&request_body).send().await?;
+    let response_body: Response<get_shopping_cart_product_variant_ids::ResponseData> =
+        res.json().await?;
+    println!("{:#?}", response_body);
+    todo!()
+}
+
+/// Obtains current product variant versions using product variants.
+async fn query_current_product_variant_versions(
+    db_client: &Database,
+    product_variant_ids: &Vec<Uuid>,
+) -> Result<Vec<ProductVariantVersion>> {
+    let collection: Collection<ProductVariant> =
+        db_client.collection::<ProductVariant>("product_variants");
+    let product_variants = query_objects(&collection, product_variant_ids).await?;
+    let current_product_variant_versions: Vec<ProductVariantVersion> =
+        product_variants.iter().map(|p| p.current_version).collect();
+    Ok(current_product_variant_versions)
+}
+
+/// Obtains current tax rate version for tax rate in product variant versions.
+async fn query_current_tax_rate_versions(
+    db_client: &Database,
+    product_variant_versions: &Vec<ProductVariantVersion>,
+) -> Result<Vec<TaxRateVersion>> {
+    let collection: Collection<TaxRate> = db_client.collection::<TaxRate>("tax_rates");
+    let tax_rate_ids: Vec<Uuid> = product_variant_versions
+        .iter()
+        .map(|p| p.tax_rate_id)
+        .collect();
+    let tax_rates = query_objects(&collection, &tax_rate_ids).await?;
+    let current_tax_rate_versions: Vec<TaxRateVersion> =
+        tax_rates.iter().map(|p| p.current_version).collect();
+    Ok(current_tax_rate_versions)
+}
+
+// #[derive(GraphQLQuery)]
+// #[graphql(
+//     schema_path = "schemas/discount.graphql",
+//     query_path = "queries/get_discounts.graphql",
+//     response_derives = "Debug",
+// )]
+struct GetDiscounts;
+
+/// Queries discounts for coupons from discount service.
+async fn query_discounts(
+    order_item_inputs: &BTreeSet<OrderItemInput>,
+    product_variant_ids: &Vec<Uuid>,
+) -> Result<Vec<HashSet<Discount>>> {
+    todo!()
+}
+
+// #[derive(GraphQLQuery)]
+// #[graphql(
+//     schema_path = "schemas/shipment.graphql",
+//     query_path = "queries/get_shipment_fees.graphql",
+//     response_derives = "Debug",
+// )]
+struct GetShipmentFees;
+/// Queries shipment fees for product variant versions and counts.
+async fn query_shipment_fees(
+    order_item_inputs: &BTreeSet<OrderItemInput>,
+    product_variant_versions: &Vec<ProductVariantVersion>,
+) -> Result<Vec<u64>> {
+    todo!()
 }
 
 /// Checks if a single object is in the system (MongoDB database populated with events).

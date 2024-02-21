@@ -32,7 +32,7 @@ use query::Query;
 mod mutation;
 use mutation::Mutation;
 
-use foreign_types::{Coupon, ProductVariantVersion, ShipmentMethod};
+use foreign_types::{Coupon, ProductVariant, ProductVariantVersion, ShipmentMethod, TaxRate};
 
 mod user;
 use user::User;
@@ -40,7 +40,7 @@ use user::User;
 mod http_event_service;
 use http_event_service::{
     list_topic_subscriptions, on_id_creation_event, on_product_variant_version_creation_event,
-    HttpEventServiceState,
+    on_tax_rate_version_creation_event, HttpEventServiceState,
 };
 
 mod authentication;
@@ -79,11 +79,15 @@ async fn db_connection() -> Client {
 
 /// Returns Router that establishes connection to Dapr.
 ///
-/// Adds endpoints to define pub/sub interaction with Dapr.
+/// Creates endpoints to define pub/sub interaction with Dapr.
 async fn build_dapr_router(db_client: Database) -> Router {
+    let product_variant_collection: mongodb::Collection<ProductVariant> =
+        db_client.collection::<ProductVariant>("product_variants");
     let product_variant_version_collection: mongodb::Collection<ProductVariantVersion> =
         db_client.collection::<ProductVariantVersion>("product_variant_versions");
     let coupon_collection: mongodb::Collection<Coupon> = db_client.collection::<Coupon>("coupons");
+    let tax_rate_collection: mongodb::Collection<TaxRate> =
+        db_client.collection::<TaxRate>("tax_rates");
     let shipment_method_collection: mongodb::Collection<ShipmentMethod> =
         db_client.collection::<ShipmentMethod>("shipment_methods");
     let user_collection: mongodb::Collection<User> = db_client.collection::<User>("users");
@@ -96,9 +100,15 @@ async fn build_dapr_router(db_client: Database) -> Router {
             "/on-product-variant-version-creation-event",
             post(on_product_variant_version_creation_event),
         )
+        .route(
+            "/on-tax-rate-version-creation-event",
+            post(on_tax_rate_version_creation_event),
+        )
         .with_state(HttpEventServiceState {
+            product_variant_collection,
             product_variant_version_collection,
             coupon_collection,
+            tax_rate_collection,
             shipment_method_collection,
             user_collection,
         });

@@ -3,7 +3,44 @@ use bson::{doc, Bson, Uuid};
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, hash::Hash};
 
-use crate::http_event_service::ProductVariantVersionEventData;
+use crate::http_event_service::{ProductVariantVersionEventData, TaxRateVersionEventData};
+
+/// Foreign type of a product variant.
+#[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
+#[graphql(unresolvable)]
+pub struct ProductVariant {
+    /// UUID of the product variant.
+    pub _id: Uuid,
+    /// Current version of product variant.
+    pub current_version: ProductVariantVersion,
+}
+
+impl From<ProductVariantVersionEventData> for ProductVariant {
+    fn from(value: ProductVariantVersionEventData) -> Self {
+        Self {
+            _id: value.product_variant_id,
+            current_version: ProductVariantVersion::from(value),
+        }
+    }
+}
+
+impl PartialOrd for ProductVariant {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self._id.partial_cmp(&other._id)
+    }
+}
+
+impl From<ProductVariant> for Bson {
+    fn from(value: ProductVariant) -> Self {
+        Bson::Document(doc!("_id": value._id))
+    }
+}
+
+impl From<ProductVariant> for Uuid {
+    fn from(value: ProductVariant) -> Self {
+        value._id
+    }
+}
 
 /// Foreign type of a product variant.
 #[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
@@ -13,14 +50,8 @@ pub struct ProductVariantVersion {
     pub _id: Uuid,
     /// Price of the product variant version.
     pub price: u64,
-    /// UUID of tax rate version associated with order item.
-    pub tax_rate_version_id: Uuid,
-}
-
-impl PartialOrd for ProductVariantVersion {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self._id.partial_cmp(&other._id)
-    }
+    /// UUID of tax rate associated with order item.
+    pub tax_rate_id: Uuid,
 }
 
 impl From<ProductVariantVersionEventData> for ProductVariantVersion {
@@ -28,8 +59,14 @@ impl From<ProductVariantVersionEventData> for ProductVariantVersion {
         Self {
             _id: value.id,
             price: value.price,
-            tax_rate_version_id: value.tax_rate_version_id,
+            tax_rate_id: value.tax_rate_id,
         }
+    }
+}
+
+impl PartialOrd for ProductVariantVersion {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self._id.partial_cmp(&other._id)
     }
 }
 
@@ -103,6 +140,68 @@ impl From<Uuid> for Coupon {
     }
 }
 
+/// Foreign type of a tax rate.
+#[derive(Debug, Serialize, Deserialize, Copy, Clone, SimpleObject)]
+#[graphql(unresolvable)]
+pub struct TaxRate {
+    /// UUID of the tax rate.
+    pub _id: Uuid,
+    /// Current version of tax rate.
+    pub current_version: TaxRateVersion,
+}
+
+impl From<TaxRateVersionEventData> for TaxRate {
+    fn from(value: TaxRateVersionEventData) -> Self {
+        Self {
+            _id: value.tax_rate_id,
+            current_version: TaxRateVersion::from(value),
+        }
+    }
+}
+
+impl From<TaxRate> for Bson {
+    fn from(value: TaxRate) -> Self {
+        let current_version_bson = Bson::from(value.current_version);
+        Bson::Document(doc!("_id": value._id, "current_version": current_version_bson))
+    }
+}
+
+/// Foreign type of a tax rate version.
+#[derive(Debug, Serialize, Deserialize, Copy, Clone, SimpleObject)]
+#[graphql(unresolvable)]
+pub struct TaxRateVersion {
+    /// UUID of the tax rate.
+    pub _id: Uuid,
+    /// Rate of the tax rate version.
+    pub rate: f64,
+    /// Version number of product variant version.
+    pub version: u32,
+}
+
+impl From<TaxRateVersionEventData> for TaxRateVersion {
+    fn from(value: TaxRateVersionEventData) -> Self {
+        Self {
+            _id: value.id,
+            rate: value.rate,
+            version: value.version,
+        }
+    }
+}
+
+impl From<TaxRateVersion> for Bson {
+    fn from(value: TaxRateVersion) -> Self {
+        Bson::Document(doc!("_id": value._id, "rate": value.rate, "version": value.version))
+    }
+}
+
+impl PartialEq for TaxRateVersion {
+    fn eq(&self, other: &Self) -> bool {
+        self._id == other._id
+    }
+}
+
+impl Eq for TaxRateVersion {}
+
 /// Foreign type of a discount.
 #[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
 #[graphql(unresolvable)]
@@ -159,4 +258,12 @@ impl From<Uuid> for ShipmentMethod {
     fn from(value: Uuid) -> Self {
         ShipmentMethod { _id: value }
     }
+}
+
+/// Foreign type of a shopping cart item.
+#[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
+#[graphql(unresolvable)]
+pub struct ShoppingCartItem {
+    /// UUID of the shopping cart item.
+    pub _id: Uuid,
 }
