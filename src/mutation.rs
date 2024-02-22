@@ -1,7 +1,3 @@
-use std::any::type_name;
-use std::collections::BTreeSet;
-use std::collections::HashSet;
-
 use async_graphql::{Context, Error, Object, Result};
 use bson::Bson;
 use bson::Uuid;
@@ -13,6 +9,11 @@ use mongodb::{
     Collection, Database,
 };
 use serde::Deserialize;
+use std::any::type_name;
+use std::collections::BTreeSet;
+use std::collections::HashSet;
+use std::time::Duration;
+use std::time::SystemTime;
 
 use crate::authentication::authenticate_user;
 use crate::foreign_types::Coupon;
@@ -31,6 +32,8 @@ use crate::query::query_object;
 use crate::query::query_objects;
 use crate::user::User;
 use crate::{order::Order, query::query_order};
+
+const PENDING_TIMEOUT: Duration = Duration::new(3600, 0);
 
 /// Describes GraphQL order mutations.
 pub struct Mutation;
@@ -101,11 +104,29 @@ fn uuid_from_bson(bson: Bson) -> Result<Uuid> {
 }
 
 /// Sets the status of an order to `OrderStatus::Placed`.
+/// Checks if pending order is still valid before setting `OrderStatus::Placed`.
+/// Rejects order if timestamp of placement exceeds `PENDING_TIMEOUT` in relation to the order creation timestamp.
 ///
 /// * `collection` - MongoDB collection to update.
 /// * `input` - `UpdateOrderInput`.
 async fn set_status_placed(collection: &Collection<Order>, id: Uuid) -> Result<()> {
-    let current_timestamp = DateTime::now();
+    let current_timestamp_system_time = SystemTime::now();
+    let order = query_object(&collection, id).await?;
+    let order_created_at_system_time = order.created_at.to_system_time();
+    if order_created_at_system_time + PENDING_TIMEOUT >= current_timestamp_system_time {
+        let current_timestamp = DateTime::from(current_timestamp_system_time);
+        set_status_placed_in_mongodb(&collection, id, current_timestamp).await
+    } else {
+        set_status_rejected_in_mongodb(&collection, id).await
+    }
+}
+
+/// Updates order to `OrderStatus::Placed` in MongoDB.
+async fn set_status_placed_in_mongodb(
+    collection: &Collection<Order>,
+    id: Uuid,
+    current_timestamp: DateTime,
+) -> Result<()> {
     let result = collection
         .update_one(
             doc! {"_id": id },
@@ -118,6 +139,30 @@ async fn set_status_placed(collection: &Collection<Order>, id: Uuid) -> Result<(
         return Err(Error::new(message));
     }
     Ok(())
+}
+
+/// Updates order to `OrderStatus::Rejected` in MongoDB.
+async fn set_status_rejected_in_mongodb(collection: &Collection<Order>, id: Uuid) -> Result<()> {
+    let result = collection
+        .update_one(
+            doc! {"_id": id },
+            doc! {"$set": {"order_status": OrderStatus::Rejected}},
+            None,
+        )
+        .await;
+    match result {
+        Ok(_) => {
+            let message = format!(
+                "Order of id: `{}` was rejected as it is `OrderStatus::Pending` for too long.",
+                id
+            );
+            return Err(Error::new(message));
+        }
+        Err(_) => {
+            let message = format!("Order should be rejected as it is `OrderStatus::Pending` for too long. Rejecting order of id: `{}` failed in MongoDB.", id);
+            return Err(Error::new(message));
+        }
+    }
 }
 
 /// Checks if foreign types exist (MongoDB database populated with events).
