@@ -180,11 +180,6 @@ async fn validate_order_items(
     db_client: &Database,
     order_item_inputs: &BTreeSet<OrderItemInput>,
 ) -> Result<()> {
-    // TODO: Fix validation.
-    let product_variant_version_collection: mongodb::Collection<ProductVariantVersion> =
-        db_client.collection::<ProductVariantVersion>("product_variant_versions");
-    let product_item_collection: mongodb::Collection<ProductItem> =
-        db_client.collection::<ProductItem>("product_items");
     let shipment_method_collection: mongodb::Collection<ShipmentMethod> =
         db_client.collection::<ShipmentMethod>("shipment_methods");
     let shipment_method_ids = order_item_inputs
@@ -192,25 +187,25 @@ async fn validate_order_items(
         .map(|o| o.shipment_method_id)
         .collect();
     validate_objects(&shipment_method_collection, shipment_method_ids).await?;
-    validate_discounts(&db_client, &order_item_inputs).await?;
+    validate_coupons(&db_client, &order_item_inputs).await?;
     Ok(())
 }
 
-/// Checks if discounts are in the system (MongoDB database populated with events).
+/// Checks if coupons are in the system (MongoDB database populated with events).
 ///
 /// Used before creating orders.
-async fn validate_discounts(
+async fn validate_coupons(
     db_client: &Database,
     order_item_inputs: &BTreeSet<OrderItemInput>,
 ) -> Result<()> {
-    let discount_collection: mongodb::Collection<Coupon> =
-        db_client.collection::<Coupon>("discounts");
-    let discount_ids: Vec<Uuid> = order_item_inputs
+    let coupon_collection: mongodb::Collection<Coupon> =
+        db_client.collection::<Coupon>("coupons");
+    let coupon_ids: Vec<Uuid> = order_item_inputs
         .iter()
         .map(|o| o.coupons.clone())
         .flatten()
         .collect();
-    validate_objects(&discount_collection, discount_ids).await
+    validate_objects(&coupon_collection, coupon_ids).await
 }
 
 /// Creates OrderItems from OrderItemInputs.
