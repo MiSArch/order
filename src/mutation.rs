@@ -198,8 +198,7 @@ async fn validate_coupons(
     db_client: &Database,
     order_item_inputs: &BTreeSet<OrderItemInput>,
 ) -> Result<()> {
-    let coupon_collection: mongodb::Collection<Coupon> =
-        db_client.collection::<Coupon>("coupons");
+    let coupon_collection: mongodb::Collection<Coupon> = db_client.collection::<Coupon>("coupons");
     let coupon_ids: Vec<Uuid> = order_item_inputs
         .iter()
         .map(|o| o.coupons.clone())

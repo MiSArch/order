@@ -58,10 +58,12 @@ impl Query {
         #[graphql(desc = "UUID of order_item to retrieve.")] id: Uuid,
     ) -> Result<OrderItem> {
         let db_client = ctx.data_unchecked::<Database>();
-        let collection: Collection<OrderItem> = db_client.collection::<OrderItem>("order_items");
-        let order_item = query_object(&collection, id).await?;
-        // TODO: Authentication
-        //authenticate_user(&ctx, order_item.user._id)?;
+        let order_collection: Collection<Order> = db_client.collection::<Order>("orders");
+        let order_item_collection: Collection<OrderItem> =
+            db_client.collection::<OrderItem>("order_items");
+        let order_item = query_object(&order_item_collection, id).await?;
+        let user = query_user_from_order_item_id(&order_collection, id).await?;
+        authenticate_user(&ctx, user._id)?;
         Ok(order_item)
     }
 
@@ -75,8 +77,6 @@ impl Query {
         let db_client = ctx.data_unchecked::<Database>();
         let collection: Collection<OrderItem> = db_client.collection::<OrderItem>("order_items");
         let order_item = query_object(&collection, id).await?;
-        // TODO: Authentication
-        //authenticate_user(&ctx, order_item.user._id)?;
         Ok(order_item)
     }
 }
@@ -96,6 +96,25 @@ pub async fn query_order(collection: &Collection<Order>, id: Uuid) -> Result<Ord
         },
         Err(_) => {
             let message = format!("Order with UUID id: `{}` not found.", id);
+            Err(Error::new(message))
+        }
+    }
+}
+
+async fn query_user_from_order_item_id(collection: &Collection<Order>, id: Uuid) -> Result<User> {
+    match collection
+        .find_one(doc! {"internal_order_items._id": id }, None)
+        .await
+    {
+        Ok(maybe_order) => match maybe_order {
+            Some(order) => Ok(order.user),
+            None => {
+                let message = format!("OrderItem with with UUID id: `{}` not found.", id);
+                Err(Error::new(message))
+            }
+        },
+        Err(_) => {
+            let message = format!("OrderItem with UUID id: `{}` not found.", id);
             Err(Error::new(message))
         }
     }
