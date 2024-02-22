@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::HashSet};
+use std::{cmp::Ordering, collections::BTreeSet};
 
 use async_graphql::{ComplexObject, Result, SimpleObject};
 use bson::{DateTime, Uuid};
@@ -39,7 +39,7 @@ pub struct OrderItem {
     pub compensatable_amount: u64,
     /// Shipment method of order item.
     pub shipment_method: ShipmentMethod,
-    pub internal_discounts: HashSet<Discount>,
+    pub internal_discounts: BTreeSet<Discount>,
 }
 
 impl OrderItem {
@@ -51,7 +51,7 @@ impl OrderItem {
         order_item_input: &OrderItemInput,
         product_variant_version: ProductVariantVersion,
         tax_rate_version: TaxRateVersion,
-        internal_discounts: HashSet<Discount>,
+        internal_discounts: BTreeSet<Discount>,
         shipment_fee: u64,
         current_timestamp: DateTime,
     ) -> Self {
@@ -145,8 +145,25 @@ fn sort_discounts(discounts: &mut Vec<Discount>, order_by: Option<CommonOrderInp
 /// Applies fees and discounts to calculate the compensatable amount of an OrderItem.
 fn calculate_compensatable_amount(
     product_variant_version: ProductVariantVersion,
-    internal_discounts: &HashSet<Discount>,
+    internal_discounts: &BTreeSet<Discount>,
     shipment_fee: u64,
 ) -> u64 {
-    todo!()
+    let undiscounted_price = product_variant_version.price as f64;
+    let maybe_max_discountable_amount = internal_discounts
+        .iter()
+        .map(|d| d.max_discountable_amount)
+        .min()
+        .and_then(|v| Some(v as f64));
+    let mut discounted_price = internal_discounts
+        .iter()
+        .fold(undiscounted_price, |prev_price, discount| {
+            prev_price * discount.discount
+        });
+    if let Some(max_discountable_amount) = maybe_max_discountable_amount {
+        if max_discountable_amount > discounted_price - undiscounted_price {
+            discounted_price = undiscounted_price - max_discountable_amount;
+        }
+    }
+    let total_price = discounted_price as u64 + shipment_fee;
+    total_price
 }

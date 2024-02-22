@@ -18,7 +18,6 @@ use std::time::SystemTime;
 use crate::authentication::authenticate_user;
 use crate::foreign_types::Coupon;
 use crate::foreign_types::Discount;
-use crate::foreign_types::ProductItem;
 use crate::foreign_types::ProductVariant;
 use crate::foreign_types::ProductVariantVersion;
 use crate::foreign_types::ShipmentMethod;
@@ -348,7 +347,7 @@ struct GetDiscounts;
 async fn query_discounts(
     order_item_inputs: &BTreeSet<OrderItemInput>,
     product_variant_ids: &Vec<Uuid>,
-) -> Result<Vec<HashSet<Discount>>> {
+) -> Result<Vec<BTreeSet<Discount>>> {
     todo!()
 }
 

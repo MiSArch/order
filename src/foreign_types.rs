@@ -203,16 +203,26 @@ impl PartialEq for TaxRateVersion {
 impl Eq for TaxRateVersion {}
 
 /// Foreign type of a discount.
-#[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
+#[derive(Debug, Serialize, Deserialize, Copy, Clone, SimpleObject)]
 #[graphql(unresolvable)]
 pub struct Discount {
     /// UUID of the discount.
     pub _id: Uuid,
+    /// Amount to be discounted.
+    pub discount: f64,
+    // Max discountable amount of one order item.
+    pub max_discountable_amount: u64,
+}
+
+impl Ord for Discount {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self._id.cmp(&other._id)
+    }
 }
 
 impl PartialOrd for Discount {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self._id.partial_cmp(&other._id)
+        Some(self.cmp(other))
     }
 }
 
@@ -227,6 +237,14 @@ impl From<Discount> for Uuid {
         value._id
     }
 }
+
+impl PartialEq for Discount {
+    fn eq(&self, other: &Self) -> bool {
+        self._id == other._id
+    }
+}
+
+impl Eq for Discount {}
 
 /// Foreign type of a shipment method.
 #[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
