@@ -7,11 +7,11 @@ use serde::{Deserialize, Serialize};
 use crate::{
     discount_connection::DiscountConnection,
     foreign_types::{
-        Discount, ProductItem, ProductVariantVersion, ShipmentMethod, ShoppingCartItem,
-        TaxRateVersion,
+        Discount, ProductItem, ProductVariantVersion, ShoppingCartItem, TaxRateVersion,
     },
     mutation_input_structs::OrderItemInput,
     order_datatypes::{CommonOrderInput, OrderDirection},
+    shipment::{Shipment, ShipmentMethod, ShipmentStatus},
 };
 
 /// Describes an OrderItem of an Order.
@@ -37,8 +37,8 @@ pub struct OrderItem {
     pub count: u64,
     /// Total cost of product item, which can also be refunded.
     pub compensatable_amount: u64,
-    /// Shipment method of order item.
-    pub shipment_method: ShipmentMethod,
+    /// Shipment of order item.
+    pub shipment: Shipment,
     pub internal_discounts: BTreeSet<Discount>,
 }
 
@@ -51,6 +51,7 @@ impl OrderItem {
         order_item_input: &OrderItemInput,
         product_variant_version: ProductVariantVersion,
         tax_rate_version: TaxRateVersion,
+        count: u64,
         internal_discounts: BTreeSet<Discount>,
         shipment_fee: u64,
         current_timestamp: DateTime,
@@ -63,6 +64,13 @@ impl OrderItem {
         let shopping_cart_item = ShoppingCartItem {
             _id: order_item_input.shopping_cart_item_id,
         };
+        let shipment = Shipment {
+            _id: Uuid::new(),
+            status: ShipmentStatus::Pending,
+            shipment_method: ShipmentMethod {
+                _id: order_item_input.shipment_method_id,
+            },
+        };
         Self {
             _id: Uuid::new(),
             created_at: current_timestamp,
@@ -70,11 +78,9 @@ impl OrderItem {
             product_variant_version,
             tax_rate_version,
             shopping_cart_item,
-            count: order_item_input.quantity,
+            count,
             compensatable_amount,
-            shipment_method: ShipmentMethod {
-                _id: order_item_input.shipment_method_id,
-            },
+            shipment,
             internal_discounts,
         }
     }

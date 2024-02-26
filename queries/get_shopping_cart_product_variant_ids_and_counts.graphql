@@ -1,4 +1,4 @@
-query GetShoppingCartProductVariantIds($representations: [_Any!]!) {
+query GetShoppingCartProductVariantIdsAndCounts($representations: [_Any!]!) {
     _entities(representations: $representations) {
         __typename
         ... on User {
@@ -7,7 +7,8 @@ query GetShoppingCartProductVariantIds($representations: [_Any!]!) {
                     nodes {
                         productVariant {
                             id
-                        }
+                        },
+                        count
                     }
                 }
             }

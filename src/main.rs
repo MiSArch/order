@@ -16,6 +16,7 @@ use axum::{
 
 use clap::{arg, command, Parser};
 
+use shipment::ShipmentMethod;
 use simple_logger::SimpleLogger;
 
 use log::info;
@@ -32,7 +33,7 @@ use query::Query;
 mod mutation;
 use mutation::Mutation;
 
-use foreign_types::{Coupon, ProductVariant, ProductVariantVersion, ShipmentMethod, TaxRate};
+use foreign_types::{Coupon, ProductVariant, ProductVariantVersion, TaxRate};
 
 mod user;
 use user::User;
@@ -45,6 +46,8 @@ use http_event_service::{
 
 mod authentication;
 use authentication::AuthorizedUserHeader;
+
+mod shipment;
 
 mod base_connection;
 mod discount_connection;

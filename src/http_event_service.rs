@@ -5,7 +5,8 @@ use mongodb::{options::UpdateOptions, Collection};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    foreign_types::{Coupon, ProductVariant, ProductVariantVersion, ShipmentMethod, TaxRate},
+    foreign_types::{Coupon, ProductVariant, ProductVariantVersion, TaxRate},
+    shipment::ShipmentMethod,
     user::User,
 };
 

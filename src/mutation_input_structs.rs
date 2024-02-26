@@ -17,8 +17,6 @@ pub struct CreateOrderInput {
 pub struct OrderItemInput {
     /// UUID of shopping cart item associated with order item.
     pub shopping_cart_item_id: Uuid,
-    /// Specifies the quantity of the OrderItem.
-    pub quantity: u64,
     /// UUID of shipment method to use with order item.
     pub shipment_method_id: Uuid,
     /// UUIDs of coupons to use with order item.

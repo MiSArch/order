@@ -246,38 +246,6 @@ impl PartialEq for Discount {
 
 impl Eq for Discount {}
 
-/// Foreign type of a shipment method.
-#[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
-#[graphql(unresolvable)]
-pub struct ShipmentMethod {
-    /// UUID of the shipment method.
-    pub _id: Uuid,
-}
-
-impl PartialOrd for ShipmentMethod {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self._id.partial_cmp(&other._id)
-    }
-}
-
-impl From<ShipmentMethod> for Bson {
-    fn from(value: ShipmentMethod) -> Self {
-        Bson::Document(doc!("_id": value._id))
-    }
-}
-
-impl From<ShipmentMethod> for Uuid {
-    fn from(value: ShipmentMethod) -> Self {
-        value._id
-    }
-}
-
-impl From<Uuid> for ShipmentMethod {
-    fn from(value: Uuid) -> Self {
-        ShipmentMethod { _id: value }
-    }
-}
-
 /// Foreign type of a shopping cart item.
 #[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
 #[graphql(unresolvable)]

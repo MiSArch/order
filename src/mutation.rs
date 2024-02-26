@@ -20,7 +20,6 @@ use crate::foreign_types::Coupon;
 use crate::foreign_types::Discount;
 use crate::foreign_types::ProductVariant;
 use crate::foreign_types::ProductVariantVersion;
-use crate::foreign_types::ShipmentMethod;
 use crate::foreign_types::TaxRate;
 use crate::foreign_types::TaxRateVersion;
 use crate::mutation_input_structs::CreateOrderInput;
@@ -29,6 +28,7 @@ use crate::order::OrderStatus;
 use crate::order_item::OrderItem;
 use crate::query::query_object;
 use crate::query::query_objects;
+use crate::shipment::ShipmentMethod;
 use crate::user::User;
 use crate::{order::Order, query::query_order};
 
@@ -82,6 +82,7 @@ impl Mutation {
         let order = query_order(&collection, id).await?;
         authenticate_user(&ctx, order.user._id)?;
         set_status_placed(&collection, id).await?;
+
         query_order(&collection, id).await
     }
 }
@@ -214,7 +215,8 @@ async fn create_internal_order_items(
     order_item_inputs: BTreeSet<OrderItemInput>,
     current_timestamp: DateTime,
 ) -> Result<Vec<OrderItem>> {
-    let product_variant_ids = query_product_variant_ids(&order_item_inputs).await?;
+    let (product_variant_ids, counts) =
+        query_product_variant_ids_and_counts(&order_item_inputs).await?;
     let product_variant_versions =
         query_current_product_variant_versions(db_client, &product_variant_ids).await?;
     check_product_items_availability(&product_variant_versions).await?;
@@ -226,17 +228,22 @@ async fn create_internal_order_items(
         .iter()
         .zip(product_variant_versions)
         .zip(tax_rate_versions)
+        .zip(counts)
         .zip(discounts)
         .zip(shipment_fees)
         .map(
             |(
-                (((order_item_input, product_variant_version), tax_rate_version), discounts),
+                (
+                    (((order_item_input, product_variant_version), tax_rate_version), count),
+                    discounts,
+                ),
                 shipment_fee,
             )| {
                 OrderItem::new(
                     order_item_input,
                     product_variant_version,
                     tax_rate_version,
+                    count,
                     discounts,
                     shipment_fee,
                     current_timestamp,
@@ -283,24 +290,24 @@ type UUID = Uuid;
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "schemas/shoppingcart.graphql",
-    query_path = "queries/get_shopping_cart_product_variant_ids.graphql",
+    query_path = "queries/get_shopping_cart_product_variant_ids_and_counts.graphql",
     response_derives = "Debug"
 )]
-struct GetShoppingCartProductVariantIds;
+struct GetShoppingCartProductVariantIdsAndCounts;
 
 /// Queries product variants from shopping cart item ids from shopping cart service.
-async fn query_product_variant_ids(
+async fn query_product_variant_ids_and_counts(
     order_item_inputs: &BTreeSet<OrderItemInput>,
-) -> Result<Vec<Uuid>> {
-    let variables = get_shopping_cart_product_variant_ids::Variables {
+) -> Result<(Vec<Uuid>, Vec<u64>)> {
+    let variables = get_shopping_cart_product_variant_ids_and_counts::Variables {
         representations: vec![],
     };
 
-    let request_body = GetShoppingCartProductVariantIds::build_query(variables);
+    let request_body = GetShoppingCartProductVariantIdsAndCounts::build_query(variables);
 
     let client = reqwest::Client::new();
     let res = client.post("/graphql").json(&request_body).send().await?;
-    let response_body: Response<get_shopping_cart_product_variant_ids::ResponseData> =
+    let response_body: Response<get_shopping_cart_product_variant_ids_and_counts::ResponseData> =
         res.json().await?;
     println!("{:#?}", response_body);
     todo!()
