@@ -11,7 +11,7 @@ use mongodb::{
 use serde::Deserialize;
 use std::any::type_name;
 use std::collections::BTreeSet;
-use std::collections::HashSet;
+use std::iter::Product;
 use std::time::Duration;
 use std::time::SystemTime;
 
@@ -219,7 +219,7 @@ async fn create_internal_order_items(
         query_product_variant_ids_and_counts(&order_item_inputs).await?;
     let product_variant_versions =
         query_current_product_variant_versions(db_client, &product_variant_ids).await?;
-    check_product_items_availability(&product_variant_versions).await?;
+    check_product_variant_availability(&product_variant_ids).await?;
     let tax_rate_versions =
         query_current_tax_rate_versions(db_client, &product_variant_versions).await?;
     let discounts = query_discounts(&order_item_inputs, &product_variant_ids).await?;
@@ -267,12 +267,13 @@ type _Any = String;
 struct GetUnreservedProductItemCounts;
 
 /// Checks if product items are available in the inventory service.
-async fn check_product_items_availability(
-    product_variant_versions: &Vec<ProductVariantVersion>,
-) -> Result<()> {
-    let variables = get_unreserved_product_item_counts::Variables {
-        representations: vec![],
-    };
+async fn check_product_variant_availability(product_variant_ids: &Vec<Uuid>) -> Result<()> {
+    let representations = product_variant_ids
+        .iter()
+        .cloned()
+        .map(|id| id.to_string())
+        .collect();
+    let variables = get_unreserved_product_item_counts::Variables { representations };
 
     let request_body = GetUnreservedProductItemCounts::build_query(variables);
 
@@ -280,8 +281,40 @@ async fn check_product_items_availability(
     let res = client.post("/graphql").json(&request_body).send().await?;
     let response_body: Response<get_unreserved_product_item_counts::ResponseData> =
         res.json().await?;
-    println!("{:#?}", response_body);
-    Ok(())
+    let response_data: get_unreserved_product_item_counts::ResponseData =
+        response_body.data.ok_or(Error::new(
+            "Response data of `check_product_variant_availability` query is empty.",
+        ))?;
+
+    match response_data
+        .entities
+        .into_iter()
+        .all(product_variant_is_available)
+    {
+        true => Ok(()),
+        false => Err(Error::new("Not all product variants associated with order items in order are available.")),
+    }
+}
+
+/// Unwraps on Option of `get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities` to check availability.
+/// Available is defined as at least one unreserved item in stock (represented by `product_items.total_count`).
+///
+/// Assumes that all options are `Some`, otherwise returns `false`.
+fn product_variant_is_available(
+    maybe_product_variant_enum: Option<
+        get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities,
+    >,
+) -> bool {
+    let maybe_availability = maybe_product_variant_enum.and_then(|product_variant_enum: get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities| {
+        match product_variant_enum {
+            get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities::ProductVariant(product_variant) => {
+                product_variant.product_items.and_then(|product_items|
+                    Some(product_items.total_count > 0)
+                )
+            },
+        }
+    });
+    maybe_availability.unwrap_or(false)
 }
 
 // Defines a custom scalar from GraphQL schema.

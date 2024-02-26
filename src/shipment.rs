@@ -4,7 +4,7 @@ use async_graphql::{Enum, SimpleObject};
 use bson::{doc, Bson, Uuid};
 use serde::{Deserialize, Serialize};
 
-/// Foreign type of a shipment.
+/// Defines a shipment associated with one or more order items.
 #[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
 #[graphql(unresolvable)]
 pub struct Shipment {
@@ -34,7 +34,7 @@ impl From<Shipment> for Uuid {
     }
 }
 
-/// Foreign type of a shipment method.
+/// Describes the method/provider that the shipment uses.
 #[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
 #[graphql(unresolvable)]
 pub struct ShipmentMethod {
@@ -66,6 +66,7 @@ impl From<Uuid> for ShipmentMethod {
     }
 }
 
+/// Defines the shipments delivery and return status.
 #[derive(Debug, Serialize, Deserialize, Enum, Hash, PartialEq, Eq, Clone, Copy)]
 pub enum ShipmentStatus {
     Pending,
