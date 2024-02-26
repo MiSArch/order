@@ -278,6 +278,7 @@ async fn check_product_variant_availability(product_variant_ids: &Vec<Uuid>) -> 
     let request_body = GetUnreservedProductItemCounts::build_query(variables);
 
     let client = reqwest::Client::new();
+    // TODO: Adapt URL to Dapr.
     let res = client.post("/graphql").json(&request_body).send().await?;
     let response_body: Response<get_unreserved_product_item_counts::ResponseData> =
         res.json().await?;
@@ -292,11 +293,13 @@ async fn check_product_variant_availability(product_variant_ids: &Vec<Uuid>) -> 
         .all(product_variant_is_available)
     {
         true => Ok(()),
-        false => Err(Error::new("Not all product variants associated with order items in order are available.")),
+        false => Err(Error::new(
+            "Not all product variants associated with order items in order are available.",
+        )),
     }
 }
 
-/// Unwraps on Option of `get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities` to check availability.
+/// Unwraps an Option of `get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities` to check availability.
 /// Available is defined as at least one unreserved item in stock (represented by `product_items.total_count`).
 ///
 /// Assumes that all options are `Some`, otherwise returns `false`.
@@ -332,18 +335,46 @@ struct GetShoppingCartProductVariantIdsAndCounts;
 async fn query_product_variant_ids_and_counts(
     order_item_inputs: &BTreeSet<OrderItemInput>,
 ) -> Result<(Vec<Uuid>, Vec<u64>)> {
-    let variables = get_shopping_cart_product_variant_ids_and_counts::Variables {
-        representations: vec![],
-    };
+    let first_order_item_input = order_item_inputs
+        .first()
+        .ok_or("Failed to `query_product_variant_ids_and_counts`, `order_item_inputs` is empty.")?;
+    // TODO: Use user as representations input.
+    let representations = todo!();
+    let variables = get_shopping_cart_product_variant_ids_and_counts::Variables { representations };
 
     let request_body = GetShoppingCartProductVariantIdsAndCounts::build_query(variables);
 
     let client = reqwest::Client::new();
+    // TODO: Adapt URL to Dapr.
     let res = client.post("/graphql").json(&request_body).send().await?;
     let response_body: Response<get_shopping_cart_product_variant_ids_and_counts::ResponseData> =
         res.json().await?;
-    println!("{:#?}", response_body);
-    todo!()
+    let mut response_data: get_shopping_cart_product_variant_ids_and_counts::ResponseData =
+        response_body.data.ok_or(Error::new(
+            "Response data of `query_product_variant_ids_and_counts` query is empty.",
+        ))?;
+    let shopping_cart_response_data = response_data
+        .entities
+        .remove(0)
+        .ok_or("Response data of `query_product_variant_ids_and_counts` query is empty.")?;
+    
+    let ids_and_counts = into_ids_and_counts(shopping_cart_response_data);
+    let ids = ids_and_counts.iter().map(|(id, _)| *id).collect();
+    let counts = ids_and_counts.iter().map(|(_, count)| *count).collect();
+    Ok((ids, counts))
+}
+
+// Unwraps Enum and maps the resulting Vec to contain (id, count).
+fn into_ids_and_counts(
+    ids_and_counts_enum: get_shopping_cart_product_variant_ids_and_counts::GetShoppingCartProductVariantIdsAndCountsEntities,
+) -> Vec<(Uuid, u64)> {
+    match ids_and_counts_enum {
+        get_shopping_cart_product_variant_ids_and_counts::GetShoppingCartProductVariantIdsAndCountsEntities::User(user) => {
+            user.shoppingcart.shoppingcart_items.nodes.iter().map(|shoppingcart_item|
+                (shoppingcart_item.product_variant.id, shoppingcart_item.count as u64)
+            ).collect()
+        }
+    }
 }
 
 /// Obtains current product variant versions using product variants.

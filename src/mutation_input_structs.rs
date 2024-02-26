@@ -13,7 +13,7 @@ pub struct CreateOrderInput {
     pub order_item_inputs: BTreeSet<OrderItemInput>,
 }
 
-#[derive(SimpleObject, InputObject, PartialEq, Eq)]
+#[derive(SimpleObject, InputObject, PartialEq, Eq, Clone)]
 pub struct OrderItemInput {
     /// UUID of shopping cart item associated with order item.
     pub shopping_cart_item_id: Uuid,
