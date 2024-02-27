@@ -5,6 +5,7 @@ query GetShoppingCartProductVariantIdsAndCounts($representations: [_Any!]!) {
             shoppingcart {
                 shoppingcartItems {
                     nodes {
+                        id,
                         productVariant {
                             id
                         },

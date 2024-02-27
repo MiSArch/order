@@ -11,6 +11,8 @@ use mongodb::{
 use serde::Deserialize;
 use std::any::type_name;
 use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::f64::consts::E;
 use std::iter::Product;
 use std::time::Duration;
 use std::time::SystemTime;
@@ -51,8 +53,7 @@ impl Mutation {
         validate_input(db_client, &input).await?;
         let current_timestamp = DateTime::now();
         let internal_order_items =
-            create_internal_order_items(&db_client, input.order_item_inputs, current_timestamp)
-                .await?;
+            create_internal_order_items(&db_client, &input, current_timestamp).await?;
         let order = Order {
             _id: Uuid::new(),
             user: User { _id: input.user_id },
@@ -212,19 +213,20 @@ async fn validate_coupons(
 /// Used before creating orders.
 async fn create_internal_order_items(
     db_client: &Database,
-    order_item_inputs: BTreeSet<OrderItemInput>,
+    input: &CreateOrderInput,
     current_timestamp: DateTime,
 ) -> Result<Vec<OrderItem>> {
-    let (product_variant_ids, counts) =
-        query_product_variant_ids_and_counts(&order_item_inputs).await?;
+    let (product_variant_ids, counts) = query_product_variant_ids_and_counts(&input).await?;
     let product_variant_versions =
         query_current_product_variant_versions(db_client, &product_variant_ids).await?;
     check_product_variant_availability(&product_variant_ids).await?;
     let tax_rate_versions =
         query_current_tax_rate_versions(db_client, &product_variant_versions).await?;
-    let discounts = query_discounts(&order_item_inputs, &product_variant_ids).await?;
-    let shipment_fees = query_shipment_fees(&order_item_inputs, &product_variant_versions).await?;
-    let internal_order_items: Vec<OrderItem> = order_item_inputs
+    let discounts = query_discounts(&input.order_item_inputs, &product_variant_ids).await?;
+    let shipment_fees =
+        query_shipment_fees(&input.order_item_inputs, &product_variant_versions).await?;
+    let internal_order_items: Vec<OrderItem> = input
+        .order_item_inputs
         .iter()
         .zip(product_variant_versions)
         .zip(tax_rate_versions)
@@ -333,13 +335,9 @@ struct GetShoppingCartProductVariantIdsAndCounts;
 
 /// Queries product variants from shopping cart item ids from shopping cart service.
 async fn query_product_variant_ids_and_counts(
-    order_item_inputs: &BTreeSet<OrderItemInput>,
+    input: &CreateOrderInput,
 ) -> Result<(Vec<Uuid>, Vec<u64>)> {
-    let first_order_item_input = order_item_inputs
-        .first()
-        .ok_or("Failed to `query_product_variant_ids_and_counts`, `order_item_inputs` is empty.")?;
-    // TODO: Use user as representations input.
-    let representations = todo!();
+    let representations = vec![input.user_id.to_string()];
     let variables = get_shopping_cart_product_variant_ids_and_counts::Variables { representations };
 
     let request_body = GetShoppingCartProductVariantIdsAndCounts::build_query(variables);
@@ -357,24 +355,46 @@ async fn query_product_variant_ids_and_counts(
         .entities
         .remove(0)
         .ok_or("Response data of `query_product_variant_ids_and_counts` query is empty.")?;
-    
-    let ids_and_counts = into_ids_and_counts(shopping_cart_response_data);
+
+    let ids_and_counts_by_shopping_cart_item_ids =
+        into_ids_and_counts_by_shopping_cart_item_ids(shopping_cart_response_data);
+    let ids_and_counts = map_order_item_input_to_ids_and_counts(
+        &input.order_item_inputs,
+        &ids_and_counts_by_shopping_cart_item_ids,
+    )?;
     let ids = ids_and_counts.iter().map(|(id, _)| *id).collect();
     let counts = ids_and_counts.iter().map(|(_, count)| *count).collect();
     Ok((ids, counts))
 }
 
-// Unwraps Enum and maps the resulting Vec to contain (id, count).
-fn into_ids_and_counts(
+// Unwraps Enum and maps the result to a hash map of shopping cart item ids as keys and (product_variant_id, count) as values.
+fn into_ids_and_counts_by_shopping_cart_item_ids(
     ids_and_counts_enum: get_shopping_cart_product_variant_ids_and_counts::GetShoppingCartProductVariantIdsAndCountsEntities,
-) -> Vec<(Uuid, u64)> {
+) -> HashMap<Uuid, (Uuid, u64)> {
     match ids_and_counts_enum {
         get_shopping_cart_product_variant_ids_and_counts::GetShoppingCartProductVariantIdsAndCountsEntities::User(user) => {
             user.shoppingcart.shoppingcart_items.nodes.iter().map(|shoppingcart_item|
-                (shoppingcart_item.product_variant.id, shoppingcart_item.count as u64)
+                (shoppingcart_item.id, (shoppingcart_item.product_variant.id, shoppingcart_item.count as u64))
             ).collect()
         }
     }
+}
+
+/// Maps order item input to queried ids and counts.
+fn map_order_item_input_to_ids_and_counts(
+    order_item_inputs: &BTreeSet<OrderItemInput>,
+    ids_and_counts: &HashMap<Uuid, (Uuid, u64)>,
+) -> Result<Vec<(Uuid, u64)>> {
+    order_item_inputs
+        .iter()
+        .map(|e| {
+            let id_and_count_ref = ids_and_counts.get(&e.shopping_cart_item_id);
+            let id_and_count = id_and_count_ref.and_then(|(id, count)| Some((*id, *count)));
+            id_and_count.ok_or(Error::new(
+                "Shopping cart does not contain shopping cart item specified in order.",
+            ))
+        })
+        .collect()
 }
 
 /// Obtains current product variant versions using product variants.
