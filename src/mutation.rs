@@ -83,7 +83,7 @@ impl Mutation {
         let order = query_order(&collection, id).await?;
         authenticate_user(&ctx, order.user._id)?;
         set_status_placed(&collection, id).await?;
-
+        send_order_created_event(&order).await?;
         query_order(&collection, id).await
     }
 }
@@ -506,4 +506,14 @@ where
             Err(Error::new(message))
         }
     }
+}
+
+/// Sends an `order/order/created` created event containing the order context.
+async fn send_order_created_event(order: &Order) -> Result<()> {
+    let client = reqwest::Client::new();
+    client.post("http://localhost:3500/v1.0/publish/order/order/created")
+        .json(order)
+        .send()
+        .await?;
+    Ok(())
 }
