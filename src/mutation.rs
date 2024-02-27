@@ -278,10 +278,9 @@ async fn check_product_variant_availability(product_variant_ids: &Vec<Uuid>) -> 
     let variables = get_unreserved_product_item_counts::Variables { representations };
 
     let request_body = GetUnreservedProductItemCounts::build_query(variables);
-
     let client = reqwest::Client::new();
-    // TODO: Adapt URL to Dapr.
-    let res = client.post("/graphql").json(&request_body).send().await?;
+
+    let res = client.post("http://localhost:3500/v1.0/invoke/inventory/method/graphql").json(&request_body).send().await?;
     let response_body: Response<get_unreserved_product_item_counts::ResponseData> =
         res.json().await?;
     let response_data: get_unreserved_product_item_counts::ResponseData =
@@ -341,10 +340,9 @@ async fn query_product_variant_ids_and_counts(
     let variables = get_shopping_cart_product_variant_ids_and_counts::Variables { representations };
 
     let request_body = GetShoppingCartProductVariantIdsAndCounts::build_query(variables);
-
     let client = reqwest::Client::new();
-    // TODO: Adapt URL to Dapr.
-    let res = client.post("/graphql").json(&request_body).send().await?;
+
+    let res = client.post("http://localhost:3500/v1.0/invoke/shoppingcart/method/").json(&request_body).send().await?;
     let response_body: Response<get_shopping_cart_product_variant_ids_and_counts::ResponseData> =
         res.json().await?;
     let mut response_data: get_shopping_cart_product_variant_ids_and_counts::ResponseData =
