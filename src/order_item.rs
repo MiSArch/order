@@ -46,7 +46,6 @@ impl OrderItem {
     /// Constructor for OrderItems.
     ///
     /// Queries ProductVariantVersion from MongoDB.
-    /// Correctness: ProductVariantVersion exists, as its precondition is the successful OrderItemInput validation. -> `unwrap()` is uncritical.
     pub fn new(
         order_item_input: &OrderItemInput,
         product_variant_version: ProductVariantVersion,
