@@ -6,6 +6,7 @@ use bson::{datetime::DateTime, Bson};
 use serde::{Deserialize, Serialize};
 
 use crate::order_datatypes::OrderDirection;
+use crate::order_item::OrderItemDTO;
 use crate::{
     order_datatypes::CommonOrderInput, order_item::OrderItem,
     order_item_connection::OrderItemConnection, user::User,
@@ -113,4 +114,41 @@ fn sort_order_items(order_items: &mut Vec<OrderItem>, order_by: Option<CommonOrd
         true => Ordering::Less,
         false => Ordering::Greater,
     });
+}
+
+/// DTO of an order of a user.
+#[derive(Debug, Serialize)]
+pub struct OrderDTO {
+    /// Order UUID.
+    pub id: Uuid,
+    /// UUID of user connected with Order.
+    pub user_id: Uuid,
+    /// Timestamp when Order was created.
+    pub created_at: DateTime,
+    /// The status of the Order.
+    pub order_status: OrderStatus,
+    /// Timestamp of Order placement. `None` until Order is placed.
+    pub placed_at: Option<DateTime>,
+    /// The rejection reason if status of the Order is `OrderStatus::Rejected`.
+    pub rejection_reason: Option<RejectionReason>,
+    pub order_items: Vec<OrderItemDTO>,
+}
+
+impl From<Order> for OrderDTO {
+    fn from(value: Order) -> Self {
+        let order_item_dtos = value
+            .internal_order_items
+            .iter()
+            .map(|o| OrderItemDTO::from(o.clone()))
+            .collect();
+        Self {
+            id: value._id,
+            user_id: value.user._id,
+            created_at: value.created_at,
+            order_status: value.order_status,
+            placed_at: value.placed_at,
+            rejection_reason: value.rejection_reason,
+            order_items: order_item_dtos,
+        }
+    }
 }

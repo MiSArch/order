@@ -75,3 +75,24 @@ pub enum ShipmentStatus {
     Returned,
     ReturnInProgress,
 }
+
+/// DTO of a shipment associated with one or more order items.
+#[derive(Debug, Serialize)]
+pub struct ShipmentDTO {
+    /// UUID of the shipment.
+    pub id: Uuid,
+    /// Shipment status of the shipment.
+    pub status: ShipmentStatus,
+    /// UUID of method/provider, which is used for shipping.
+    pub shipment_method_id: Uuid,
+}
+
+impl From<Shipment> for ShipmentDTO {
+    fn from(value: Shipment) -> Self {
+        Self {
+            id: value._id,
+            status: value.status,
+            shipment_method_id: value.shipment_method._id,
+        }
+    }
+}

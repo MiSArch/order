@@ -24,6 +24,7 @@ use crate::foreign_types::TaxRate;
 use crate::foreign_types::TaxRateVersion;
 use crate::mutation_input_structs::CreateOrderInput;
 use crate::mutation_input_structs::OrderItemInput;
+use crate::order::OrderDTO;
 use crate::order::OrderStatus;
 use crate::order_item::OrderItem;
 use crate::query::query_object;
@@ -81,7 +82,7 @@ impl Mutation {
         let order = query_order(&collection, id).await?;
         authenticate_user(&ctx, order.user._id)?;
         set_status_placed(&collection, id).await?;
-        send_order_created_event(&order).await?;
+        send_order_created_event(order).await?;
         query_order(&collection, id).await
     }
 }
@@ -278,7 +279,11 @@ async fn check_product_variant_availability(product_variant_ids: &Vec<Uuid>) -> 
     let request_body = GetUnreservedProductItemCounts::build_query(variables);
     let client = reqwest::Client::new();
 
-    let res = client.post("http://localhost:3500/v1.0/invoke/inventory/method/graphql").json(&request_body).send().await?;
+    let res = client
+        .post("http://localhost:3500/v1.0/invoke/inventory/method/graphql")
+        .json(&request_body)
+        .send()
+        .await?;
     let response_body: Response<get_unreserved_product_item_counts::ResponseData> =
         res.json().await?;
     let response_data: get_unreserved_product_item_counts::ResponseData =
@@ -340,7 +345,11 @@ async fn query_product_variant_ids_and_counts(
     let request_body = GetShoppingCartProductVariantIdsAndCounts::build_query(variables);
     let client = reqwest::Client::new();
 
-    let res = client.post("http://localhost:3500/v1.0/invoke/shoppingcart/method/").json(&request_body).send().await?;
+    let res = client
+        .post("http://localhost:3500/v1.0/invoke/shoppingcart/method/")
+        .json(&request_body)
+        .send()
+        .await?;
     let response_body: Response<get_shopping_cart_product_variant_ids_and_counts::ResponseData> =
         res.json().await?;
     let mut response_data: get_shopping_cart_product_variant_ids_and_counts::ResponseData =
@@ -454,10 +463,12 @@ async fn query_shipment_fees(
 }
 
 /// Sends an `order/order/created` created event containing the order context.
-async fn send_order_created_event(order: &Order) -> Result<()> {
+async fn send_order_created_event(order: Order) -> Result<()> {
     let client = reqwest::Client::new();
-    client.post("http://localhost:3500/v1.0/publish/order/order/created")
-        .json(order)
+    let order_dto = OrderDTO::from(order);
+    client
+        .post("http://localhost:3500/v1.0/publish/order/order/created")
+        .json(&order_dto)
         .send()
         .await?;
     Ok(())
