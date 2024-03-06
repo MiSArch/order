@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     discount_connection::DiscountConnection,
     foreign_types::{
-        Discount, ProductVariant, ProductVariantVersion, ShipmentMethod, ShoppingCartItem, TaxRateVersion
+        Discount, ProductVariant, ProductVariantVersion, ShipmentMethod, ShoppingCartItem,
+        TaxRateVersion,
     },
     mutation_input_structs::OrderItemInput,
     order_datatypes::{CommonOrderInput, OrderDirection},
@@ -35,6 +36,7 @@ pub struct OrderItem {
     pub compensatable_amount: u64,
     /// Shipment method of order item.
     pub shipment_method: ShipmentMethod,
+    /// The internal vector consisting of Discounts. TODO: Hide in GraphQL schema, as querying is only supported over connection.
     pub internal_discounts: BTreeSet<Discount>,
 }
 

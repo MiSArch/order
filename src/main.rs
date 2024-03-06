@@ -16,6 +16,7 @@ use axum::{
 
 use clap::{arg, command, Parser};
 
+use order_compensation::OrderCompensation;
 use simple_logger::SimpleLogger;
 
 use log::info;
@@ -39,11 +40,15 @@ use user::User;
 
 mod http_event_service;
 use http_event_service::{
-    list_topic_subscriptions, on_id_creation_event, on_product_variant_version_creation_event, on_tax_rate_version_creation_event, on_user_address_archived_event, on_user_address_creation_event, HttpEventServiceState
+    list_topic_subscriptions, on_id_creation_event, on_product_variant_version_creation_event,
+    on_tax_rate_version_creation_event, on_user_address_archived_event,
+    on_user_address_creation_event, HttpEventServiceState,
 };
 
 mod authentication;
 use authentication::AuthorizedUserHeader;
+
+mod order_compensation;
 
 mod base_connection;
 mod discount_connection;
@@ -90,6 +95,8 @@ async fn build_dapr_router(db_client: Database) -> Router {
     let shipment_method_collection: mongodb::Collection<ShipmentMethod> =
         db_client.collection::<ShipmentMethod>("shipment_methods");
     let user_collection: mongodb::Collection<User> = db_client.collection::<User>("users");
+    let order_compensation_collection: mongodb::Collection<OrderCompensation> =
+        db_client.collection::<OrderCompensation>("order_compensations");
 
     // Define routes.
     let app = Router::new()
@@ -118,6 +125,7 @@ async fn build_dapr_router(db_client: Database) -> Router {
             tax_rate_collection,
             shipment_method_collection,
             user_collection,
+            order_compensation_collection,
         });
     app
 }

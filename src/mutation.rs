@@ -252,7 +252,13 @@ async fn create_internal_order_items(
         .map(
             |(
                 (
-                    ((((order_item_input, product_variant), product_variant_version), tax_rate_version), count),
+                    (
+                        (
+                            ((order_item_input, product_variant), product_variant_version),
+                            tax_rate_version,
+                        ),
+                        count,
+                    ),
                     discounts,
                 ),
                 shipment_fee,
@@ -423,7 +429,7 @@ fn map_order_item_input_to_ids_and_counts(
 // Obtains product variants from product variant ids.
 async fn query_product_variants(
     db_client: &Database,
-    product_variant_ids: &Vec<Uuid>
+    product_variant_ids: &Vec<Uuid>,
 ) -> Result<Vec<ProductVariant>> {
     let collection: Collection<ProductVariant> =
         db_client.collection::<ProductVariant>("product_variants");
@@ -432,7 +438,7 @@ async fn query_product_variants(
 
 /// Obtains current product variant versions using product variants.
 async fn query_current_product_variant_versions(
-    product_variants: &Vec<ProductVariant>
+    product_variants: &Vec<ProductVariant>,
 ) -> Result<Vec<ProductVariantVersion>> {
     let current_product_variant_versions: Vec<ProductVariantVersion> =
         product_variants.iter().map(|p| p.current_version).collect();
@@ -510,15 +516,22 @@ async fn validate_user_address(
         Ok(maybe_object) => match maybe_object {
             Some(object) => Ok(object),
             None => {
-                let message = format!("Address with UUID: `{}` of user with UUID: `{}` not found.", id, user_id);
+                let message = format!(
+                    "Address with UUID: `{}` of user with UUID: `{}` not found.",
+                    id, user_id
+                );
                 Err(Error::new(message))
             }
         },
         Err(_) => {
-            let message = format!("Address with UUID: `{}` of user with UUID: `{}` not found.", id, user_id);
+            let message = format!(
+                "Address with UUID: `{}` of user with UUID: `{}` not found.",
+                id, user_id
+            );
             Err(Error::new(message))
         }
-    }.map(|_| ())
+    }
+    .map(|_| ())
 }
 
 /// Checks if a single object is in the system (MongoDB database populated with events).

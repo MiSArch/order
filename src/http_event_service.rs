@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     foreign_types::{Coupon, ProductVariant, ProductVariantVersion, ShipmentMethod, TaxRate},
+    order::Order,
+    order_compensation::{compensate_order, OrderCompensation},
     user::User,
 };
 
@@ -79,6 +81,32 @@ pub struct UserAddressEventData {
     pub user_id: f64,
 }
 
+#[derive(Deserialize, Debug)]
+pub struct ShipmentFailedEventData {
+    /// UUID of the order of shipment.
+    pub order_id: Uuid,
+    /// UUIDs of the order items of shipment.
+    pub order_item_ids: Vec<Uuid>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ShipmentStatusUpdatedEventData {
+    /// UUID of the order of shipment.
+    pub order_id: Uuid,
+    /// UUIDs of the order items of shipment.
+    pub order_item_ids: Vec<Uuid>,
+    /// Status of shipment.
+    pub status: ShipmentStatus,
+}
+
+#[derive(Deserialize, Debug)]
+pub enum ShipmentStatus {
+    Pending,
+    InProgress,
+    Delivered,
+    Failed,
+}
+
 /// Service state containing database connections.
 #[derive(Clone)]
 pub struct HttpEventServiceState {
@@ -88,6 +116,7 @@ pub struct HttpEventServiceState {
     pub tax_rate_collection: Collection<TaxRate>,
     pub shipment_method_collection: Collection<ShipmentMethod>,
     pub user_collection: Collection<User>,
+    pub order_compensation_collection: Collection<OrderCompensation>,
 }
 
 /// HTTP endpoint to list topic subsciptions.
@@ -272,6 +301,33 @@ pub async fn on_user_address_archived_event(
     Ok(Json(TopicEventResponse::default()))
 }
 
+// TODO: Complete this implementation.
+/// HTTP endpoint to receive Shipment creation events.
+#[debug_handler(state = HttpEventServiceState)]
+pub async fn on_shipment_creation_failed_event(
+    State(state): State<HttpEventServiceState>,
+    Json(event): Json<Event<ShipmentFailedEventData>>,
+) -> Result<Json<TopicEventResponse>, StatusCode> {
+    info!("{:?}", event);
+
+    match event.topic.as_str() {
+        "shipment/shipment/creation-failed" => {
+            compensate_order(&state.order_compensation_collection, event.data)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        }
+        _ => {
+            // TODO: This message can be used for further Error visibility.
+            let _message = format!(
+                "Event of topic: `{}` is not a handleable by this service.",
+                event.topic.as_str()
+            );
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    }
+    Ok(Json(TopicEventResponse::default()))
+}
+
 /// Create a newly created ProductVariantVersion in MongoDB.
 pub async fn create_product_variant_version_in_mongodb(
     collection: &Collection<ProductVariantVersion>,
@@ -330,7 +386,7 @@ pub async fn insert_user_address_in_mongodb(
         .update_one(
             doc! {"_id": user_address.user_id },
             doc! {"$push": {"user_address_ids": user_address.id }},
-            None
+            None,
         )
         .await
     {
@@ -348,39 +404,13 @@ pub async fn remove_user_address_in_mongodb(
         .update_one(
             doc! {"_id": user_address.user_id },
             doc! {"$pull": {"user_address_ids": user_address.id }},
-            None
+            None,
         )
         .await
     {
         Ok(_) => Ok(()),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
-}
-
-// TODO: Complete this implementation.
-/// HTTP endpoint to receive Shipment creation events.
-#[debug_handler(state = HttpEventServiceState)]
-pub async fn on_shipment_creation_event(
-    State(state): State<HttpEventServiceState>,
-    Json(event): Json<Event<TaxRateVersionEventData>>,
-) -> Result<Json<TopicEventResponse>, StatusCode> {
-    info!("{:?}", event);
-
-    let tax_rate = TaxRate::from(event.data);
-    match event.topic.as_str() {
-        "tax/tax-rate-version/created" => {
-            create_or_update_tax_rate_in_mongodb(&state.tax_rate_collection, tax_rate).await?
-        }
-        _ => {
-            // TODO: This message can be used for further Error visibility.
-            let _message = format!(
-                "Event of topic: `{}` is not a handleable by this service.",
-                event.topic.as_str()
-            );
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-    }
-    Ok(Json(TopicEventResponse::default()))
 }
 
 /// Create a new object: T in MongoDB.

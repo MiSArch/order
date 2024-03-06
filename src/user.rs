@@ -66,6 +66,9 @@ impl User {
 
 impl From<Uuid> for User {
     fn from(value: Uuid) -> Self {
-        User { _id: value, user_address_ids: vec![] }
+        User {
+            _id: value,
+            user_address_ids: vec![],
+        }
     }
 }
