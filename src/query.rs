@@ -90,12 +90,12 @@ pub async fn query_order(collection: &Collection<Order>, id: Uuid) -> Result<Ord
         Ok(maybe_order) => match maybe_order {
             Some(order) => Ok(order),
             None => {
-                let message = format!("Order with UUID id: `{}` not found.", id);
+                let message = format!("Order with UUID: `{}` not found.", id);
                 Err(Error::new(message))
             }
         },
         Err(_) => {
-            let message = format!("Order with UUID id: `{}` not found.", id);
+            let message = format!("Order with UUID: `{}` not found.", id);
             Err(Error::new(message))
         }
     }
@@ -109,12 +109,12 @@ async fn query_user_from_order_item_id(collection: &Collection<Order>, id: Uuid)
         Ok(maybe_order) => match maybe_order {
             Some(order) => Ok(order.user),
             None => {
-                let message = format!("OrderItem with with UUID id: `{}` not found.", id);
+                let message = format!("OrderItem with UUID: `{}` not found.", id);
                 Err(Error::new(message))
             }
         },
         Err(_) => {
-            let message = format!("OrderItem with UUID id: `{}` not found.", id);
+            let message = format!("OrderItem with UUID: `{}` not found.", id);
             Err(Error::new(message))
         }
     }
@@ -132,12 +132,12 @@ pub async fn query_object<T: for<'a> Deserialize<'a> + Unpin + Send + Sync>(
         Ok(maybe_object) => match maybe_object {
             Some(object) => Ok(object),
             None => {
-                let message = format!("{} with UUID id: `{}` not found.", type_name::<T>(), id);
+                let message = format!("{} with UUID: `{}` not found.", type_name::<T>(), id);
                 Err(Error::new(message))
             }
         },
         Err(_) => {
-            let message = format!("{} with UUID id: `{}` not found.", type_name::<T>(), id);
+            let message = format!("{} with UUID: `{}` not found.", type_name::<T>(), id);
             Err(Error::new(message))
         }
     }

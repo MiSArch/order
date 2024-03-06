@@ -11,6 +11,10 @@ pub struct CreateOrderInput {
     pub user_id: Uuid,
     /// OrderItems of order.
     pub order_item_inputs: BTreeSet<OrderItemInput>,
+    /// UUID of address to where the order should be shipped to.
+    pub shipment_address_id: Uuid,
+    /// UUID of address of invoice.
+    pub invoice_address_id: Uuid,
 }
 
 #[derive(SimpleObject, InputObject, PartialEq, Eq, Clone)]

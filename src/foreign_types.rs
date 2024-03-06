@@ -253,3 +253,67 @@ pub struct ShoppingCartItem {
     /// UUID of the shopping cart item.
     pub _id: Uuid,
 }
+
+/// Foreign type of an address.
+#[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
+#[graphql(unresolvable)]
+pub struct Address {
+    /// UUID of the product item.
+    pub _id: Uuid,
+}
+
+impl PartialOrd for Address {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self._id.partial_cmp(&other._id)
+    }
+}
+
+impl From<Address> for Bson {
+    fn from(value: Address) -> Self {
+        Bson::Document(doc!("_id": value._id))
+    }
+}
+
+impl From<Address> for Uuid {
+    fn from(value: Address) -> Self {
+        value._id
+    }
+}
+
+impl From<Uuid> for Address {
+    fn from(value: Uuid) -> Self {
+        Address { _id: value }
+    }
+}
+
+/// Describes the method/provider that the shipment uses.
+#[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
+#[graphql(unresolvable)]
+pub struct ShipmentMethod {
+    /// UUID of the shipment method.
+    pub _id: Uuid,
+}
+
+impl PartialOrd for ShipmentMethod {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self._id.partial_cmp(&other._id)
+    }
+}
+
+impl From<ShipmentMethod> for Bson {
+    fn from(value: ShipmentMethod) -> Self {
+        Bson::Document(doc!("_id": value._id))
+    }
+}
+
+impl From<ShipmentMethod> for Uuid {
+    fn from(value: ShipmentMethod) -> Self {
+        value._id
+    }
+}
+
+impl From<Uuid> for ShipmentMethod {
+    fn from(value: Uuid) -> Self {
+        ShipmentMethod { _id: value }
+    }
+}

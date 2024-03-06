@@ -16,10 +16,12 @@ use std::time::Duration;
 use std::time::SystemTime;
 
 use crate::authentication::authenticate_user;
+use crate::foreign_types::Address;
 use crate::foreign_types::Coupon;
 use crate::foreign_types::Discount;
 use crate::foreign_types::ProductVariant;
 use crate::foreign_types::ProductVariantVersion;
+use crate::foreign_types::ShipmentMethod;
 use crate::foreign_types::TaxRate;
 use crate::foreign_types::TaxRateVersion;
 use crate::mutation_input_structs::CreateOrderInput;
@@ -29,7 +31,6 @@ use crate::order::OrderStatus;
 use crate::order_item::OrderItem;
 use crate::query::query_object;
 use crate::query::query_objects;
-use crate::shipment::ShipmentMethod;
 use crate::user::User;
 use crate::{order::Order, query::query_order};
 
@@ -53,14 +54,18 @@ impl Mutation {
         let current_timestamp = DateTime::now();
         let internal_order_items =
             create_internal_order_items(&db_client, &input, current_timestamp).await?;
+        let shipment_address = Address::from(input.shipment_address_id);
+        let invoice_address = Address::from(input.invoice_address_id);
         let order = Order {
             _id: Uuid::new(),
-            user: User { _id: input.user_id },
+            user: User::from(input.user_id),
             created_at: current_timestamp,
             order_status: OrderStatus::Pending,
             placed_at: None,
             rejection_reason: None,
             internal_order_items,
+            shipment_address,
+            invoice_address,
         };
         match collection.insert_one(order, None).await {
             Ok(result) => {
@@ -170,6 +175,7 @@ async fn validate_input(db_client: &Database, input: &CreateOrderInput) -> Resul
     let user_collection: mongodb::Collection<User> = db_client.collection::<User>("users");
     validate_object(&user_collection, input.user_id).await?;
     validate_order_items(&db_client, &input.order_item_inputs).await?;
+    validate_addresses(&db_client, &input).await?;
     Ok(())
 }
 
@@ -207,6 +213,15 @@ async fn validate_coupons(
     validate_objects(&coupon_collection, coupon_ids).await
 }
 
+/// Checks if addresses are registered under the user (MongoDB database populated with events).
+///
+/// Used before creating orders.
+async fn validate_addresses(db_client: &Database, input: &CreateOrderInput) -> Result<()> {
+    let user_collection: mongodb::Collection<User> = db_client.collection::<User>("users");
+    validate_user_address(&user_collection, input.shipment_address_id, input.user_id).await?;
+    validate_user_address(&user_collection, input.invoice_address_id, input.user_id).await
+}
+
 /// Creates OrderItems from OrderItemInputs.
 ///
 /// Used before creating orders.
@@ -216,8 +231,9 @@ async fn create_internal_order_items(
     current_timestamp: DateTime,
 ) -> Result<Vec<OrderItem>> {
     let (product_variant_ids, counts) = query_product_variant_ids_and_counts(&input).await?;
+    let product_variants = query_product_variants(db_client, &product_variant_ids).await?;
     let product_variant_versions =
-        query_current_product_variant_versions(db_client, &product_variant_ids).await?;
+        query_current_product_variant_versions(&product_variants).await?;
     check_product_variant_availability(&product_variant_ids).await?;
     let tax_rate_versions =
         query_current_tax_rate_versions(db_client, &product_variant_versions).await?;
@@ -227,6 +243,7 @@ async fn create_internal_order_items(
     let internal_order_items: Vec<OrderItem> = input
         .order_item_inputs
         .iter()
+        .zip(product_variants)
         .zip(product_variant_versions)
         .zip(tax_rate_versions)
         .zip(counts)
@@ -235,13 +252,14 @@ async fn create_internal_order_items(
         .map(
             |(
                 (
-                    (((order_item_input, product_variant_version), tax_rate_version), count),
+                    ((((order_item_input, product_variant), product_variant_version), tax_rate_version), count),
                     discounts,
                 ),
                 shipment_fee,
             )| {
                 OrderItem::new(
                     order_item_input,
+                    product_variant,
                     product_variant_version,
                     tax_rate_version,
                     count,
@@ -402,14 +420,20 @@ fn map_order_item_input_to_ids_and_counts(
         .collect()
 }
 
-/// Obtains current product variant versions using product variants.
-async fn query_current_product_variant_versions(
+// Obtains product variants from product variant ids.
+async fn query_product_variants(
     db_client: &Database,
-    product_variant_ids: &Vec<Uuid>,
-) -> Result<Vec<ProductVariantVersion>> {
+    product_variant_ids: &Vec<Uuid>
+) -> Result<Vec<ProductVariant>> {
     let collection: Collection<ProductVariant> =
         db_client.collection::<ProductVariant>("product_variants");
-    let product_variants = query_objects(&collection, product_variant_ids).await?;
+    query_objects(&collection, product_variant_ids).await
+}
+
+/// Obtains current product variant versions using product variants.
+async fn query_current_product_variant_versions(
+    product_variants: &Vec<ProductVariant>
+) -> Result<Vec<ProductVariantVersion>> {
     let current_product_variant_versions: Vec<ProductVariantVersion> =
         product_variants.iter().map(|p| p.current_version).collect();
     Ok(current_product_variant_versions)
@@ -472,6 +496,29 @@ async fn send_order_created_event(order: Order) -> Result<()> {
         .send()
         .await?;
     Ok(())
+}
+
+/// Checks if an address is registered under a specific user (MongoDB database populated with events).
+///
+/// Used before creating orders.
+async fn validate_user_address(
+    collection: &Collection<User>,
+    id: Uuid,
+    user_id: Uuid,
+) -> Result<()> {
+    match collection.find_one(doc! {"_id": id }, None).await {
+        Ok(maybe_object) => match maybe_object {
+            Some(object) => Ok(object),
+            None => {
+                let message = format!("Address with UUID: `{}` of user with UUID: `{}` not found.", id, user_id);
+                Err(Error::new(message))
+            }
+        },
+        Err(_) => {
+            let message = format!("Address with UUID: `{}` of user with UUID: `{}` not found.", id, user_id);
+            Err(Error::new(message))
+        }
+    }.map(|_| ())
 }
 
 /// Checks if a single object is in the system (MongoDB database populated with events).

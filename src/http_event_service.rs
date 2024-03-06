@@ -5,8 +5,7 @@ use mongodb::{options::UpdateOptions, Collection};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    foreign_types::{Coupon, ProductVariant, ProductVariantVersion, TaxRate},
-    shipment::ShipmentMethod,
+    foreign_types::{Coupon, ProductVariant, ProductVariantVersion, ShipmentMethod, TaxRate},
     user::User,
 };
 
@@ -72,6 +71,14 @@ pub struct TaxRateVersionEventData {
     pub tax_rate_id: Uuid,
 }
 
+#[derive(Deserialize, Debug)]
+pub struct UserAddressEventData {
+    /// UUID of the user address.
+    pub id: Uuid,
+    /// UUID of user of user address.
+    pub user_id: f64,
+}
+
 /// Service state containing database connections.
 #[derive(Clone)]
 pub struct HttpEventServiceState {
@@ -110,12 +117,18 @@ pub async fn list_topic_subscriptions() -> Result<Json<Vec<Pubsub>>, StatusCode>
         topic: "user/user/created".to_string(),
         route: "/on-id-creation-event".to_string(),
     };
+    let pubsub_user_address = Pubsub {
+        pubsubname: "pubsub".to_string(),
+        topic: "address/user-address/created".to_string(),
+        route: "/on-user-address-creation-event".to_string(),
+    };
     Ok(Json(vec![
         pubsub_product_variant_version,
         pubsub_coupon,
         pubsub_tax_rate_version,
         pubsub_shipment_method,
         pubsub_user,
+        pubsub_user_address,
     ]))
 }
 
@@ -211,6 +224,54 @@ pub async fn on_tax_rate_version_creation_event(
     Ok(Json(TopicEventResponse::default()))
 }
 
+/// HTTP endpoint to receive user Address creation events.
+#[debug_handler(state = HttpEventServiceState)]
+pub async fn on_user_address_creation_event(
+    State(state): State<HttpEventServiceState>,
+    Json(event): Json<Event<UserAddressEventData>>,
+) -> Result<Json<TopicEventResponse>, StatusCode> {
+    info!("{:?}", event);
+
+    match event.topic.as_str() {
+        "address/user-address/created" => {
+            insert_user_address_in_mongodb(&state.user_collection, event.data).await?
+        }
+        _ => {
+            // TODO: This message can be used for further Error visibility.
+            let _message = format!(
+                "Event of topic: `{}` is not a handleable by this service.",
+                event.topic.as_str()
+            );
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    }
+    Ok(Json(TopicEventResponse::default()))
+}
+
+/// HTTP endpoint to receive user Address archive events.
+#[debug_handler(state = HttpEventServiceState)]
+pub async fn on_user_address_archived_event(
+    State(state): State<HttpEventServiceState>,
+    Json(event): Json<Event<UserAddressEventData>>,
+) -> Result<Json<TopicEventResponse>, StatusCode> {
+    info!("{:?}", event);
+
+    match event.topic.as_str() {
+        "address/user-address/archived" => {
+            remove_user_address_in_mongodb(&state.user_collection, event.data).await?
+        }
+        _ => {
+            // TODO: This message can be used for further Error visibility.
+            let _message = format!(
+                "Event of topic: `{}` is not a handleable by this service.",
+                event.topic.as_str()
+            );
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    }
+    Ok(Json(TopicEventResponse::default()))
+}
+
 /// Create a newly created ProductVariantVersion in MongoDB.
 pub async fn create_product_variant_version_in_mongodb(
     collection: &Collection<ProductVariantVersion>,
@@ -258,6 +319,68 @@ pub async fn create_or_update_tax_rate_in_mongodb(
         Ok(_) => Ok(()),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
+}
+
+/// Inserts user Address in MongoDB.
+pub async fn insert_user_address_in_mongodb(
+    collection: &Collection<User>,
+    user_address: UserAddressEventData,
+) -> Result<(), StatusCode> {
+    match collection
+        .update_one(
+            doc! {"_id": user_address.user_id },
+            doc! {"$push": {"user_address_ids": user_address.id }},
+            None
+        )
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+/// Remove user Address in MongoDB.
+pub async fn remove_user_address_in_mongodb(
+    collection: &Collection<User>,
+    user_address: UserAddressEventData,
+) -> Result<(), StatusCode> {
+    match collection
+        .update_one(
+            doc! {"_id": user_address.user_id },
+            doc! {"$pull": {"user_address_ids": user_address.id }},
+            None
+        )
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+// TODO: Complete this implementation.
+/// HTTP endpoint to receive Shipment creation events.
+#[debug_handler(state = HttpEventServiceState)]
+pub async fn on_shipment_creation_event(
+    State(state): State<HttpEventServiceState>,
+    Json(event): Json<Event<TaxRateVersionEventData>>,
+) -> Result<Json<TopicEventResponse>, StatusCode> {
+    info!("{:?}", event);
+
+    let tax_rate = TaxRate::from(event.data);
+    match event.topic.as_str() {
+        "tax/tax-rate-version/created" => {
+            create_or_update_tax_rate_in_mongodb(&state.tax_rate_collection, tax_rate).await?
+        }
+        _ => {
+            // TODO: This message can be used for further Error visibility.
+            let _message = format!(
+                "Event of topic: `{}` is not a handleable by this service.",
+                event.topic.as_str()
+            );
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    }
+    Ok(Json(TopicEventResponse::default()))
 }
 
 /// Create a new object: T in MongoDB.

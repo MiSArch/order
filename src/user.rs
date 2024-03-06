@@ -18,6 +18,8 @@ use crate::{
 pub struct User {
     /// UUID of the user.
     pub _id: Uuid,
+    /// UUIDs of the users addresses.
+    pub user_address_ids: Vec<Uuid>,
 }
 
 #[ComplexObject]
@@ -64,6 +66,6 @@ impl User {
 
 impl From<Uuid> for User {
     fn from(value: Uuid) -> Self {
-        User { _id: value }
+        User { _id: value, user_address_ids: vec![] }
     }
 }

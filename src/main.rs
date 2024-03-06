@@ -16,7 +16,6 @@ use axum::{
 
 use clap::{arg, command, Parser};
 
-use shipment::ShipmentMethod;
 use simple_logger::SimpleLogger;
 
 use log::info;
@@ -33,21 +32,18 @@ use query::Query;
 mod mutation;
 use mutation::Mutation;
 
-use foreign_types::{Coupon, ProductVariant, ProductVariantVersion, TaxRate};
+use foreign_types::{Coupon, ProductVariant, ProductVariantVersion, ShipmentMethod, TaxRate};
 
 mod user;
 use user::User;
 
 mod http_event_service;
 use http_event_service::{
-    list_topic_subscriptions, on_id_creation_event, on_product_variant_version_creation_event,
-    on_tax_rate_version_creation_event, HttpEventServiceState,
+    list_topic_subscriptions, on_id_creation_event, on_product_variant_version_creation_event, on_tax_rate_version_creation_event, on_user_address_archived_event, on_user_address_creation_event, HttpEventServiceState
 };
 
 mod authentication;
 use authentication::AuthorizedUserHeader;
-
-mod shipment;
 
 mod base_connection;
 mod discount_connection;
@@ -106,6 +102,14 @@ async fn build_dapr_router(db_client: Database) -> Router {
         .route(
             "/on-tax-rate-version-creation-event",
             post(on_tax_rate_version_creation_event),
+        )
+        .route(
+            "/on-user-address-creation-event",
+            post(on_user_address_creation_event),
+        )
+        .route(
+            "/on-user-address-archived-event",
+            post(on_user_address_archived_event),
         )
         .with_state(HttpEventServiceState {
             product_variant_collection,
