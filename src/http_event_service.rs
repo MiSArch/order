@@ -116,6 +116,7 @@ pub struct HttpEventServiceState {
     pub tax_rate_collection: Collection<TaxRate>,
     pub shipment_method_collection: Collection<ShipmentMethod>,
     pub user_collection: Collection<User>,
+    pub order_collection: Collection<Order>,
     pub order_compensation_collection: Collection<OrderCompensation>,
 }
 
@@ -311,11 +312,13 @@ pub async fn on_shipment_creation_failed_event(
     info!("{:?}", event);
 
     match event.topic.as_str() {
-        "shipment/shipment/creation-failed" => {
-            compensate_order(&state.order_compensation_collection, event.data)
-                .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        }
+        "shipment/shipment/creation-failed" => compensate_order(
+            &state.order_collection,
+            &state.order_compensation_collection,
+            event.data,
+        )
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
         _ => {
             // TODO: This message can be used for further Error visibility.
             let _message = format!(

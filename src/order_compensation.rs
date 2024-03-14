@@ -1,12 +1,16 @@
 use async_graphql::{Error, Result};
 use bson::{doc, DateTime, Uuid};
+use futures::TryStreamExt;
 use mongodb::Collection;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-use crate::http_event_service::ShipmentFailedEventData;
+use crate::{
+    http_event_service::ShipmentFailedEventData, mutation::validate_object, order::Order,
+    query::query_object,
+};
 
 /// Models an order compensation that is sent as an event and logged in MongoDB.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OrderCompensation {
     /// OrderCompensation UUID.
     pub _id: Uuid,
@@ -39,43 +43,59 @@ impl From<OrderCompensation> for OrderCompensationDTO {
 }
 
 pub async fn compensate_order(
-    order_collection: &Collection<OrderCompensation>,
+    order_collection: &Collection<Order>,
+    order_compensation_collection: &Collection<OrderCompensation>,
     data: ShipmentFailedEventData,
 ) -> Result<()> {
-    verify_items_uncompensated(&order_collection, &data.order_item_ids).await?;
+    validate_object(&order_collection, data.order_id).await?;
+    verify_items_uncompensated(&order_compensation_collection, &data.order_item_ids).await?;
+    let amount_to_compensate = calculate_amount_to_compensate(&order_collection, &data).await?;
     let order_compensation = OrderCompensation {
         _id: Uuid::new(),
         order_id: data.order_id,
         order_item_ids: data.order_item_ids,
         triggered_at: DateTime::now(),
-        amount_to_compensate: todo!(),
+        amount_to_compensate,
     };
-    insert_order_compensation_in_mongodb(&order_collection, &order_compensation).await?;
+    insert_order_compensation_in_mongodb(&order_compensation_collection, &order_compensation)
+        .await?;
     send_order_compensation_event(order_compensation).await
+}
+
+async fn calculate_amount_to_compensate(
+    order_collection: &Collection<Order>,
+    data: &ShipmentFailedEventData,
+) -> Result<u64> {
+    let order = query_object(&order_collection, data.order_id).await?;
+    let compensatable_amounts: Vec<u64> = order
+        .internal_order_items
+        .iter()
+        .filter(|i| data.order_item_ids.contains(&i._id))
+        .map(|i| i.compensatable_amount)
+        .collect();
+    let amount_to_compensate = compensatable_amounts.iter().sum();
+    Ok(amount_to_compensate)
 }
 
 async fn verify_items_uncompensated(
     order_collection: &Collection<OrderCompensation>,
     order_item_ids: &Vec<Uuid>,
 ) -> Result<()> {
-    let pipeline = vec![
-        doc! {
-            "$match": {
-              "order_item_ids": {
-                "$not": {
-                  "$in": order_item_ids
-                }
-              }
+    let query = doc! {"order_item_ids": {"$not": {"$elemMatch": {"$in": order_item_ids}}}};
+    let message = format!(
+        "Order items of UUIDs: `{:?}` could not be verfied.",
+        order_item_ids
+    );
+    match order_collection.find(query, None).await {
+        Ok(cursor) => {
+            let objects: Vec<OrderCompensation> = cursor.try_collect().await?;
+            match objects.len() {
+                0 => Ok(()),
+                _ => Err(Error::new(message)),
             }
-        },
-        doc! {
-            "$group": {
-              "_id": None::<Uuid>,
-              "count": { "$sum": 1 }
-            }
-        },
-    ];
-    todo!()
+        }
+        Err(_) => Err(Error::new(message)),
+    }
 }
 
 async fn insert_order_compensation_in_mongodb(

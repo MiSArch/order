@@ -537,7 +537,7 @@ async fn validate_user_address(
 /// Checks if a single object is in the system (MongoDB database populated with events).
 ///
 /// Used before creating orders.
-async fn validate_object<T: for<'a> Deserialize<'a> + Unpin + Send + Sync>(
+pub async fn validate_object<T: for<'a> Deserialize<'a> + Unpin + Send + Sync>(
     collection: &Collection<T>,
     id: Uuid,
 ) -> Result<()> {

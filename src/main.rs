@@ -95,6 +95,7 @@ async fn build_dapr_router(db_client: Database) -> Router {
     let shipment_method_collection: mongodb::Collection<ShipmentMethod> =
         db_client.collection::<ShipmentMethod>("shipment_methods");
     let user_collection: mongodb::Collection<User> = db_client.collection::<User>("users");
+    let order_collection: mongodb::Collection<Order> = db_client.collection::<Order>("orders");
     let order_compensation_collection: mongodb::Collection<OrderCompensation> =
         db_client.collection::<OrderCompensation>("order_compensations");
 
@@ -125,6 +126,7 @@ async fn build_dapr_router(db_client: Database) -> Router {
             tax_rate_collection,
             shipment_method_collection,
             user_collection,
+            order_collection,
             order_compensation_collection,
         });
     app
