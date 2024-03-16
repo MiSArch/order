@@ -1,6 +1,9 @@
 query GetDiscounts($findApplicableDiscountsInput: FindApplicableDiscountsInput!) {
     findApplicableDiscounts(input: $findApplicableDiscountsInput) {
-        id,
-        discount
+        productVariantId,
+        discounts {
+            id,
+            discount,
+        }
     }
 }

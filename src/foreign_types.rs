@@ -210,8 +210,6 @@ pub struct Discount {
     pub _id: Uuid,
     /// Amount to be discounted.
     pub discount: f64,
-    // Max discountable amount of one order item.
-    pub max_discountable_amount: u64,
 }
 
 impl Ord for Discount {
@@ -318,15 +316,25 @@ impl From<Uuid> for ShipmentMethod {
     }
 }
 
+/// Input of GraphQL query to find dicounts for coupons. Processes coupons of multiple product variants at once.
 #[derive(Debug, Serialize)]
 pub struct FindApplicableDiscountsInput {
+    pub order_amount: u64,
     pub user_id: Uuid,
-    pub product_variants: Vec<FindApplicableDiscountsProductVariantInput>
+    pub product_variants: Vec<FindApplicableDiscountsProductVariantInput>,
 }
 
+// Elements of FindApplicableDiscountsInput. Specifies coupons for a product variant.
 #[derive(Debug, Serialize)]
 pub struct FindApplicableDiscountsProductVariantInput {
     pub product_variant_id: Uuid,
     pub count: u64,
     pub coupon_ids: HashSet<Uuid>,
+}
+
+/// Elements of GraphQL output query to find discounts for coupons. Specifies discounts for a product variant.
+#[derive(Debug, Deserialize)]
+pub struct DiscountsForProductVariant {
+    pub product_variant_id: Uuid,
+    pub discounts: Vec<Discount>,
 }

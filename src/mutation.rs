@@ -12,6 +12,7 @@ use serde::Deserialize;
 use std::any::type_name;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
+use std::num::TryFromIntError;
 use std::time::Duration;
 use std::time::SystemTime;
 
@@ -35,8 +36,6 @@ use crate::query::query_object;
 use crate::query::query_objects;
 use crate::user::User;
 use crate::{order::Order, query::query_order};
-
-use self::get_discounts::FindApplicableDiscountsInput;
 
 const PENDING_TIMEOUT: Duration = Duration::new(3600, 0);
 
@@ -244,13 +243,20 @@ async fn create_internal_order_items(
     current_timestamp: DateTime,
 ) -> Result<Vec<OrderItem>> {
     let (product_variant_ids, counts) = query_product_variant_ids_and_counts(&input).await?;
-    let product_variants = query_product_variants(db_client, &product_variant_ids).await?;
+    let product_variants: Vec<ProductVariant> =
+        query_product_variants(db_client, &product_variant_ids).await?;
     let product_variant_versions =
         query_current_product_variant_versions(&product_variants).await?;
     check_product_variant_availability(&product_variant_ids).await?;
     let tax_rate_versions =
         query_current_tax_rate_versions(db_client, &product_variant_versions).await?;
-    let discounts = query_discounts(&input, &product_variant_ids, &counts).await?;
+    let discounts = query_discounts(
+        &input,
+        &product_variant_ids,
+        &product_variant_versions,
+        &counts,
+    )
+    .await?;
     let shipment_fees =
         query_shipment_fees(&input.order_item_inputs, &product_variant_versions).await?;
     let internal_order_items: Vec<OrderItem> = input
@@ -483,24 +489,31 @@ struct GetDiscounts;
 async fn query_discounts(
     input: &CreateOrderInput,
     product_variant_ids: &Vec<Uuid>,
+    product_variant_versions: &Vec<ProductVariantVersion>,
     counts: &Vec<u64>,
 ) -> Result<Vec<BTreeSet<Discount>>> {
-    let find_applicable_discounts_product_variant_input: Vec<FindApplicableDiscountsProductVariantInput> = input
+    let find_applicable_discounts_product_variant_input: Vec<
+        get_discounts::FindApplicableDiscountsProductVariantInput,
+    > = input
         .order_item_inputs
         .iter()
         .zip(product_variant_ids)
         .zip(counts)
-        .map(
-            |((order_item_input, product_variant_id), count)| FindApplicableDiscountsProductVariantInput {
-                product_variant_id: *product_variant_id,
-                count: *count,
-                coupon_ids: order_item_input.coupons.clone(),
-            },
-        )
-        .collect();
-    let find_applicable_discounts_input = FindApplicableDiscountsInput {
+        .map(|((order_item_input, product_variant_id), count)| {
+            let find_applicable_discounts_product_variant_input =
+                get_discounts::FindApplicableDiscountsProductVariantInput {
+                    product_variant_id: *product_variant_id,
+                    count: i64::try_from(*count)?,
+                    coupon_ids: order_item_input.coupons.iter().cloned().collect(),
+                };
+            Ok(find_applicable_discounts_product_variant_input)
+        })
+        .collect()?;
+    let order_amount = calculate_order_amount(&product_variant_versions)?;
+    let find_applicable_discounts_input = get_discounts::FindApplicableDiscountsInput {
         user_id: input.user_id,
         product_variants: find_applicable_discounts_product_variant_input,
+        order_amount,
     };
     let variables = get_discounts::Variables {
         find_applicable_discounts_input,
@@ -517,7 +530,22 @@ async fn query_discounts(
     let mut response_data: get_discounts::ResponseData = response_body.data.ok_or(Error::new(
         "Response data of `query_discounts` query is empty.",
     ))?;
+
+    let discounts_for_product_variants_response_data = response_data.find_applicable_discounts;
     Ok(())
+}
+
+/// Calculates the total sum of the undiscounted order items. Does not include shipping costs.
+///
+/// This defines the semantic of the total amount that is passed to the Discount service, for figuring out which Discounts apply.
+/// Do not confuse with `calculate_total_compensatable_amount`, which is the total compensatable amount that the buyer needs to pay.
+///
+/// Converts value to an `i64` as this is what the GraphQL client library expects.
+fn calculate_order_amount(
+    product_variant_versions: &Vec<ProductVariantVersion>,
+) -> Result<i64, TryFromIntError> {
+    let order_amount: u64 = product_variant_versions.iter().map(|p| p.price).sum();
+    i64::try_from(order_amount)
 }
 
 // #[derive(GraphQLQuery)]

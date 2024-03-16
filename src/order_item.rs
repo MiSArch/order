@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::BTreeSet, iter::Sum};
+use std::{cmp::Ordering, collections::BTreeSet};
 
 use async_graphql::{ComplexObject, Result, SimpleObject};
 use bson::{DateTime, Uuid};
@@ -149,21 +149,11 @@ fn calculate_compensatable_amount(
     shipment_fee: u64,
 ) -> u64 {
     let undiscounted_price = product_variant_version.price as f64;
-    let maybe_max_discountable_amount = internal_discounts
-        .iter()
-        .map(|d| d.max_discountable_amount)
-        .min()
-        .and_then(|v| Some(v as f64));
-    let mut discounted_price = internal_discounts
+    let discounted_price = internal_discounts
         .iter()
         .fold(undiscounted_price, |prev_price, discount| {
             prev_price * discount.discount
         });
-    if let Some(max_discountable_amount) = maybe_max_discountable_amount {
-        if max_discountable_amount > discounted_price - undiscounted_price {
-            discounted_price = undiscounted_price - max_discountable_amount;
-        }
-    }
     let total_price = discounted_price as u64 + shipment_fee;
     total_price
 }
