@@ -20,8 +20,6 @@ use crate::authentication::authenticate_user;
 use crate::foreign_types::Address;
 use crate::foreign_types::Coupon;
 use crate::foreign_types::Discount;
-use crate::foreign_types::FindApplicableDiscountsInput;
-use crate::foreign_types::FindApplicableDiscountsProductVariantInput;
 use crate::foreign_types::ProductVariant;
 use crate::foreign_types::ProductVariantVersion;
 use crate::foreign_types::ShipmentMethod;
@@ -259,6 +257,30 @@ async fn create_internal_order_items(
     .await?;
     let shipment_fees =
         query_shipment_fees(&input.order_item_inputs, &product_variant_versions).await?;
+    let internal_order_items = zip_to_internal_order_items(
+        input,
+        product_variants,
+        product_variant_versions,
+        tax_rate_versions,
+        counts,
+        discounts,
+        shipment_fees,
+        current_timestamp,
+    );
+    Ok(internal_order_items)
+}
+
+/// Takes all retrieved values needed for creating the internal order items and zip them to create the according order items.
+fn zip_to_internal_order_items(
+    input: &CreateOrderInput,
+    product_variants: Vec<ProductVariant>,
+    product_variant_versions: Vec<ProductVariantVersion>,
+    tax_rate_versions: Vec<TaxRateVersion>,
+    counts: Vec<u64>,
+    discounts: Vec<BTreeSet<Discount>>,
+    shipment_fees: Vec<u64>,
+    current_timestamp: DateTime,
+) -> Vec<OrderItem> {
     let internal_order_items: Vec<OrderItem> = input
         .order_item_inputs
         .iter()
@@ -295,7 +317,7 @@ async fn create_internal_order_items(
             },
         )
         .collect();
-    Ok(internal_order_items)
+    internal_order_items
 }
 
 // Defines a custom scalar from GraphQL schema.
@@ -333,7 +355,13 @@ async fn check_product_variant_availability(product_variant_ids: &Vec<Uuid>) -> 
         response_body.data.ok_or(Error::new(
             "Response data of `check_product_variant_availability` query is empty.",
         ))?;
+    calculate_availability_from_response_data(response_data)
+}
 
+/// Calculates the availability by checking if all elements in the reponse data are available.
+fn calculate_availability_from_response_data(
+    response_data: get_unreserved_product_item_counts::ResponseData,
+) -> Result<()> {
     match response_data
         .entities
         .into_iter()
@@ -483,7 +511,7 @@ async fn query_current_tax_rate_versions(
     query_path = "queries/get_discounts.graphql",
     response_derives = "Debug"
 )]
-struct GetDiscounts;
+pub struct GetDiscounts;
 
 /// Queries discounts for coupons from discount service.
 async fn query_discounts(
@@ -492,6 +520,93 @@ async fn query_discounts(
     product_variant_versions: &Vec<ProductVariantVersion>,
     counts: &Vec<u64>,
 ) -> Result<Vec<BTreeSet<Discount>>> {
+    let find_applicable_discounts_product_variant_input =
+        build_find_applicable_discounts_product_variant_input(input, product_variant_ids, counts)?;
+    let order_amount = calculate_order_amount(&product_variant_versions)?;
+    let find_applicable_discounts_input = build_find_applicable_discounts_input(
+        input,
+        find_applicable_discounts_product_variant_input,
+        order_amount,
+    );
+    let variables = get_discounts::Variables {
+        find_applicable_discounts_input,
+    };
+    let request_body = GetDiscounts::build_query(variables);
+    let client = reqwest::Client::new();
+
+    let res = client
+        .post("http://localhost:3500/v1.0/invoke/shoppingcart/method/")
+        .json(&request_body)
+        .send()
+        .await?;
+    let response_body: Response<get_discounts::ResponseData> = res.json().await?;
+    let response_data: get_discounts::ResponseData = response_body.data.ok_or(Error::new(
+        "Response data of `query_discounts` query is empty.",
+    ))?;
+    build_discounts_from_response_data(response_data, product_variant_ids)
+}
+
+/// Remaps the result type of the GraphQL `findApplicableDiscounts` query to the the according product variants.
+/// Converts the GraphQL client library generated discounts to the internally used discounts, which are GraphQL `SimpleObject`.
+fn build_discounts_from_response_data(
+    response_data: get_discounts::ResponseData,
+    product_variant_ids: &Vec<Uuid>,
+) -> Result<Vec<BTreeSet<Discount>>> {
+    let discounts_for_product_variants_response_data: Vec<
+        get_discounts::GetDiscountsFindApplicableDiscounts,
+    > = response_data.find_applicable_discounts;
+    let graphql_client_lib_discounts: Vec<get_discounts::GetDiscountsFindApplicableDiscounts> =
+        remap_discounts_to_product_variants(
+            discounts_for_product_variants_response_data,
+            &product_variant_ids,
+        )?;
+    let simple_object_discounts = convert_graphql_client_lib_discounts_to_simple_object_discounts(
+        graphql_client_lib_discounts,
+    );
+    Ok(simple_object_discounts)
+}
+
+/// Builds `get_discounts::FindApplicableDiscountsInput`, which is the following struct:
+///
+/// pub struct FindApplicableDiscountsInput {
+///     #[serde(rename = "orderAmount")]
+///     pub order_amount: Int,
+///     #[serde(rename = "productVariants")]
+///     pub product_variants: Vec<FindApplicableDiscountsProductVariantInput>,
+///     #[serde(rename = "userId")]
+///     pub user_id: UUID,
+/// }
+///
+/// Describes the order amount, which is the sum of all product variant version prices, a Vec of `get_discounts::FindApplicableDiscountsProductVariantInput` and the user which the discounts are be queried for.
+fn build_find_applicable_discounts_input(
+    input: &CreateOrderInput,
+    find_applicable_discounts_product_variant_input: Vec<
+        get_discounts::FindApplicableDiscountsProductVariantInput,
+    >,
+    order_amount: i64,
+) -> get_discounts::FindApplicableDiscountsInput {
+    let find_applicable_discounts_input = get_discounts::FindApplicableDiscountsInput {
+        user_id: input.user_id,
+        product_variants: find_applicable_discounts_product_variant_input,
+        order_amount,
+    };
+    find_applicable_discounts_input
+}
+
+/// Builds part of the `get_discounts::FindApplicableDiscountsInput`, which is a Vec of the following struct:
+///  
+/// pub struct FindApplicableDiscountsProductVariantInput {
+///     pub product_variant_id: Uuid,
+///     pub count: u64,
+///     pub coupon_ids: HashSet<Uuid>,
+/// }
+///
+/// Describes product variant ids, the count of items planned to order and the coupons, which should be applied.
+fn build_find_applicable_discounts_product_variant_input(
+    input: &CreateOrderInput,
+    product_variant_ids: &Vec<Uuid>,
+    counts: &Vec<u64>,
+) -> Result<Vec<get_discounts::FindApplicableDiscountsProductVariantInput>> {
     let find_applicable_discounts_product_variant_input: Vec<
         get_discounts::FindApplicableDiscountsProductVariantInput,
     > = input
@@ -506,33 +621,70 @@ async fn query_discounts(
                     count: i64::try_from(*count)?,
                     coupon_ids: order_item_input.coupons.iter().cloned().collect(),
                 };
-            Ok(find_applicable_discounts_product_variant_input)
+            Ok::<get_discounts::FindApplicableDiscountsProductVariantInput, Error>(
+                find_applicable_discounts_product_variant_input,
+            )
         })
-        .collect()?;
-    let order_amount = calculate_order_amount(&product_variant_versions)?;
-    let find_applicable_discounts_input = get_discounts::FindApplicableDiscountsInput {
-        user_id: input.user_id,
-        product_variants: find_applicable_discounts_product_variant_input,
-        order_amount,
-    };
-    let variables = get_discounts::Variables {
-        find_applicable_discounts_input,
-    };
-    let request_body = GetDiscounts::build_query(variables);
-    let client = reqwest::Client::new();
+        .collect::<Result<Vec<get_discounts::FindApplicableDiscountsProductVariantInput>>>()?;
+    Ok(find_applicable_discounts_product_variant_input)
+}
 
-    let res = client
-        .post("http://localhost:3500/v1.0/invoke/shoppingcart/method/")
-        .json(&request_body)
-        .send()
-        .await?;
-    let response_body: Response<get_discounts::ResponseData> = res.json().await?;
-    let mut response_data: get_discounts::ResponseData = response_body.data.ok_or(Error::new(
-        "Response data of `query_discounts` query is empty.",
-    ))?;
+/// Remaps the result type of the GraphQL `findApplicableDiscounts` query to the the according product variants.
+///
+/// Builds a discounts Vec which is ordered identically to the `product_variant_ids` Vec.
+///
+/// This is needed to reconstruct the order from the GraphQL query output, which does not rely on correct ordering.
+fn remap_discounts_to_product_variants(
+    discounts_for_product_variants_response_data: Vec<
+        get_discounts::GetDiscountsFindApplicableDiscounts,
+    >,
+    product_variant_ids: &Vec<Uuid>,
+) -> Result<Vec<get_discounts::GetDiscountsFindApplicableDiscounts>> {
+    let mut discounts_for_product_variants: HashMap<
+        Uuid,
+        get_discounts::GetDiscountsFindApplicableDiscounts,
+    > = discounts_for_product_variants_response_data
+        .into_iter()
+        .fold(
+        HashMap::new(),
+        |mut map: HashMap<Uuid, get_discounts::GetDiscountsFindApplicableDiscounts>,
+         discount_for_product_variant: get_discounts::GetDiscountsFindApplicableDiscounts| {
+            map.insert(
+                discount_for_product_variant.product_variant_id,
+                discount_for_product_variant,
+            );
+            map
+        },
+    );
+    let graphql_client_lib_discounts: Result<Vec<get_discounts::GetDiscountsFindApplicableDiscounts>> = product_variant_ids.iter().map(|id| {
+        let message = format!("Product variant of UUID: `{}` is not contained in the result which `findApplicableDiscounts` provides.", id);
+        discounts_for_product_variants.remove(id).ok_or(Error::new(message))
+    }).collect();
+    graphql_client_lib_discounts
+}
 
-    let discounts_for_product_variants_response_data = response_data.find_applicable_discounts;
-    Ok(())
+/// Converts the GraphQL client library generated discounts to the internally used discounts, which are GraphQL `SimpleObject`.
+///
+/// This enables the discounts to be retrivable from the GraphQL endpoints of this service.
+fn convert_graphql_client_lib_discounts_to_simple_object_discounts(
+    graphql_client_lib_discounts: Vec<get_discounts::GetDiscountsFindApplicableDiscounts>,
+) -> Vec<BTreeSet<Discount>> {
+    graphql_client_lib_discounts
+        .into_iter()
+        .map(
+            |discounts: get_discounts::GetDiscountsFindApplicableDiscounts| {
+                discounts
+                    .discounts
+                    .into_iter()
+                    .map(
+                        |discount: get_discounts::GetDiscountsFindApplicableDiscountsDiscounts| {
+                            Discount::from(discount)
+                        },
+                    )
+                    .collect()
+            },
+        )
+        .collect()
 }
 
 /// Calculates the total sum of the undiscounted order items. Does not include shipping costs.

@@ -1,9 +1,10 @@
 use async_graphql::SimpleObject;
 use bson::{doc, Bson, Uuid};
 use serde::{Deserialize, Serialize};
-use std::{cmp::Ordering, collections::HashSet, hash::Hash};
+use std::{cmp::Ordering, hash::Hash};
 
 use crate::http_event_service::{ProductVariantVersionEventData, TaxRateVersionEventData};
+use crate::mutation::get_discounts;
 
 /// Foreign type of a product variant.
 #[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
@@ -244,6 +245,15 @@ impl PartialEq for Discount {
 
 impl Eq for Discount {}
 
+impl From<get_discounts::GetDiscountsFindApplicableDiscountsDiscounts> for Discount {
+    fn from(value: get_discounts::GetDiscountsFindApplicableDiscountsDiscounts) -> Self {
+        Self {
+            _id: value.id,
+            discount: value.discount,
+        }
+    }
+}
+
 /// Foreign type of a shopping cart item.
 #[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
 #[graphql(unresolvable)]
@@ -314,27 +324,4 @@ impl From<Uuid> for ShipmentMethod {
     fn from(value: Uuid) -> Self {
         ShipmentMethod { _id: value }
     }
-}
-
-/// Input of GraphQL query to find dicounts for coupons. Processes coupons of multiple product variants at once.
-#[derive(Debug, Serialize)]
-pub struct FindApplicableDiscountsInput {
-    pub order_amount: u64,
-    pub user_id: Uuid,
-    pub product_variants: Vec<FindApplicableDiscountsProductVariantInput>,
-}
-
-// Elements of FindApplicableDiscountsInput. Specifies coupons for a product variant.
-#[derive(Debug, Serialize)]
-pub struct FindApplicableDiscountsProductVariantInput {
-    pub product_variant_id: Uuid,
-    pub count: u64,
-    pub coupon_ids: HashSet<Uuid>,
-}
-
-/// Elements of GraphQL output query to find discounts for coupons. Specifies discounts for a product variant.
-#[derive(Debug, Deserialize)]
-pub struct DiscountsForProductVariant {
-    pub product_variant_id: Uuid,
-    pub discounts: Vec<Discount>,
 }
