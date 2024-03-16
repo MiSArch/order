@@ -20,7 +20,7 @@ pub struct OrderCompensation {
     pub order_item_ids: Vec<Uuid>,
     /// Timestamp when compensation was triggered.
     pub triggered_at: DateTime,
-    /// Amount of order compensation
+    /// Amount of order compensation.
     pub amount_to_compensate: u64,
 }
 

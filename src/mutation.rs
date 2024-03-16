@@ -19,6 +19,8 @@ use crate::authentication::authenticate_user;
 use crate::foreign_types::Address;
 use crate::foreign_types::Coupon;
 use crate::foreign_types::Discount;
+use crate::foreign_types::FindApplicableDiscountsInput;
+use crate::foreign_types::FindApplicableDiscountsProductVariantInput;
 use crate::foreign_types::ProductVariant;
 use crate::foreign_types::ProductVariantVersion;
 use crate::foreign_types::ShipmentMethod;
@@ -33,6 +35,8 @@ use crate::query::query_object;
 use crate::query::query_objects;
 use crate::user::User;
 use crate::{order::Order, query::query_order};
+
+use self::get_discounts::FindApplicableDiscountsInput;
 
 const PENDING_TIMEOUT: Duration = Duration::new(3600, 0);
 
@@ -52,10 +56,12 @@ impl Mutation {
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         validate_input(db_client, &input).await?;
         let current_timestamp = DateTime::now();
-        let internal_order_items =
+        let internal_order_items: Vec<OrderItem> =
             create_internal_order_items(&db_client, &input, current_timestamp).await?;
         let shipment_address = Address::from(input.shipment_address_id);
         let invoice_address = Address::from(input.invoice_address_id);
+        let total_compensatable_amount =
+            calculate_total_compensatable_amount(&internal_order_items);
         let order = Order {
             _id: Uuid::new(),
             user: User::from(input.user_id),
@@ -66,6 +72,8 @@ impl Mutation {
             internal_order_items,
             shipment_address,
             invoice_address,
+            total_compensatable_amount,
+            payment_information_id: input.payment_information_id,
         };
         match collection.insert_one(order, None).await {
             Ok(result) => {
@@ -90,6 +98,11 @@ impl Mutation {
         send_order_created_event(order).await?;
         query_order(&collection, id).await
     }
+}
+
+/// Calculates the total compensatable amount of all order items in the input by summing up their `compensatable_amount` attributes.
+fn calculate_total_compensatable_amount(order_items: &Vec<OrderItem>) -> u64 {
+    order_items.iter().map(|o| o.compensatable_amount).sum()
 }
 
 /// Extracts UUID from Bson.
@@ -237,7 +250,7 @@ async fn create_internal_order_items(
     check_product_variant_availability(&product_variant_ids).await?;
     let tax_rate_versions =
         query_current_tax_rate_versions(db_client, &product_variant_versions).await?;
-    let discounts = query_discounts(&input.order_item_inputs, &product_variant_ids).await?;
+    let discounts = query_discounts(&input, &product_variant_ids, &counts).await?;
     let shipment_fees =
         query_shipment_fees(&input.order_item_inputs, &product_variant_versions).await?;
     let internal_order_items: Vec<OrderItem> = input
@@ -359,6 +372,7 @@ type UUID = Uuid;
 )]
 struct GetShoppingCartProductVariantIdsAndCounts;
 
+// TODO: Authentication.
 /// Queries product variants from shopping cart item ids from shopping cart service.
 async fn query_product_variant_ids_and_counts(
     input: &CreateOrderInput,
@@ -376,14 +390,10 @@ async fn query_product_variant_ids_and_counts(
         .await?;
     let response_body: Response<get_shopping_cart_product_variant_ids_and_counts::ResponseData> =
         res.json().await?;
+    let message = "Response data of `query_product_variant_ids_and_counts` query is empty.";
     let mut response_data: get_shopping_cart_product_variant_ids_and_counts::ResponseData =
-        response_body.data.ok_or(Error::new(
-            "Response data of `query_product_variant_ids_and_counts` query is empty.",
-        ))?;
-    let shopping_cart_response_data = response_data
-        .entities
-        .remove(0)
-        .ok_or("Response data of `query_product_variant_ids_and_counts` query is empty.")?;
+        response_body.data.ok_or(Error::new(message))?;
+    let shopping_cart_response_data = response_data.entities.remove(0).ok_or(message)?;
 
     let ids_and_counts_by_shopping_cart_item_ids =
         into_ids_and_counts_by_shopping_cart_item_ids(shopping_cart_response_data);
@@ -461,20 +471,53 @@ async fn query_current_tax_rate_versions(
     Ok(current_tax_rate_versions)
 }
 
-// #[derive(GraphQLQuery)]
-// #[graphql(
-//     schema_path = "schemas/discount.graphql",
-//     query_path = "queries/get_discounts.graphql",
-//     response_derives = "Debug",
-// )]
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "schemas/discount.graphql",
+    query_path = "queries/get_discounts.graphql",
+    response_derives = "Debug"
+)]
 struct GetDiscounts;
 
 /// Queries discounts for coupons from discount service.
 async fn query_discounts(
-    order_item_inputs: &BTreeSet<OrderItemInput>,
+    input: &CreateOrderInput,
     product_variant_ids: &Vec<Uuid>,
+    counts: &Vec<u64>,
 ) -> Result<Vec<BTreeSet<Discount>>> {
-    todo!()
+    let find_applicable_discounts_product_variant_input: Vec<FindApplicableDiscountsProductVariantInput> = input
+        .order_item_inputs
+        .iter()
+        .zip(product_variant_ids)
+        .zip(counts)
+        .map(
+            |((order_item_input, product_variant_id), count)| FindApplicableDiscountsProductVariantInput {
+                product_variant_id: *product_variant_id,
+                count: *count,
+                coupon_ids: order_item_input.coupons.clone(),
+            },
+        )
+        .collect();
+    let find_applicable_discounts_input = FindApplicableDiscountsInput {
+        user_id: input.user_id,
+        product_variants: find_applicable_discounts_product_variant_input,
+    };
+    let variables = get_discounts::Variables {
+        find_applicable_discounts_input,
+    };
+    let request_body = GetDiscounts::build_query(variables);
+    let client = reqwest::Client::new();
+
+    let res = client
+        .post("http://localhost:3500/v1.0/invoke/shoppingcart/method/")
+        .json(&request_body)
+        .send()
+        .await?;
+    let response_body: Response<get_discounts::ResponseData> = res.json().await?;
+    let mut response_data: get_discounts::ResponseData = response_body.data.ok_or(Error::new(
+        "Response data of `query_discounts` query is empty.",
+    ))?;
+    Ok(())
 }
 
 // #[derive(GraphQLQuery)]

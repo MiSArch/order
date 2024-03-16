@@ -15,6 +15,8 @@ pub struct CreateOrderInput {
     pub shipment_address_id: Uuid,
     /// UUID of address of invoice.
     pub invoice_address_id: Uuid,
+    /// UUID of payment information that the order should be processed with.
+    pub payment_information_id: Uuid,
 }
 
 #[derive(SimpleObject, InputObject, PartialEq, Eq, Clone)]

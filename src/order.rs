@@ -35,6 +35,10 @@ pub struct Order {
     pub shipment_address: Address,
     /// Address of invoice.
     pub invoice_address: Address,
+    /// Total compensatable amount of order.
+    pub total_compensatable_amount: u64,
+    /// UUID of payment information that the order should be processed with.
+    pub payment_information_id: Uuid,
 }
 
 #[ComplexObject]
@@ -137,7 +141,12 @@ pub struct OrderDTO {
     pub placed_at: Option<DateTime>,
     /// The rejection reason if status of the Order is `OrderStatus::Rejected`.
     pub rejection_reason: Option<RejectionReason>,
+    /// OrderItems associated with the order.
     pub order_items: Vec<OrderItemDTO>,
+    /// Total compensatable amount of order.
+    pub total_compensatable_amount: u64,
+    /// UUID of payment information that the order should be processed with.
+    pub payment_information_id: Uuid,
 }
 
 impl From<Order> for OrderDTO {
@@ -155,6 +164,8 @@ impl From<Order> for OrderDTO {
             placed_at: value.placed_at,
             rejection_reason: value.rejection_reason,
             order_items: order_item_dtos,
+            total_compensatable_amount: value.total_compensatable_amount,
+            payment_information_id: value.payment_information_id,
         }
     }
 }

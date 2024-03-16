@@ -1,7 +1,7 @@
 use async_graphql::SimpleObject;
 use bson::{doc, Bson, Uuid};
 use serde::{Deserialize, Serialize};
-use std::{cmp::Ordering, hash::Hash};
+use std::{cmp::Ordering, collections::HashSet, hash::Hash};
 
 use crate::http_event_service::{ProductVariantVersionEventData, TaxRateVersionEventData};
 
@@ -316,4 +316,17 @@ impl From<Uuid> for ShipmentMethod {
     fn from(value: Uuid) -> Self {
         ShipmentMethod { _id: value }
     }
+}
+
+#[derive(Debug, Serialize)]
+pub struct FindApplicableDiscountsInput {
+    pub user_id: Uuid,
+    pub product_variants: Vec<FindApplicableDiscountsProductVariantInput>
+}
+
+#[derive(Debug, Serialize)]
+pub struct FindApplicableDiscountsProductVariantInput {
+    pub product_variant_id: Uuid,
+    pub count: u64,
+    pub coupon_ids: HashSet<Uuid>,
 }

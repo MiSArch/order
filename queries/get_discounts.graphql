@@ -1,1 +1,6 @@
-// TODO: Write query according to service schema.
+query GetDiscounts($findApplicableDiscountsInput: FindApplicableDiscountsInput!) {
+    findApplicableDiscounts(input: $findApplicableDiscountsInput) {
+        id,
+        discount
+    }
+}

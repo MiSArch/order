@@ -1,1 +1,8 @@
-// TODO: Write query according to service schema.
+query GetShipmentFees($representations: [_Any!]!) {
+    _entities(representations: $representations) {
+        __typename
+        ... on ShipmentMethod {
+            calculateFees(items: $items)
+        }
+    }
+}
