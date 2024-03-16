@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          submodules: recursive
       - name: Install latest stable
         uses: actions-rs/toolchain@v1
         with:
@@ -16,7 +18,6 @@ jobs:
           toolchain: stable
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
           repository: "misarch/schemas"
           path: "schemas"
       - name: Save graphql schemas
