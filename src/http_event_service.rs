@@ -183,14 +183,7 @@ pub async fn on_id_creation_event(
             create_in_mongodb(&state.shipment_method_collection, event.data.id).await?
         }
         "user/user/created" => create_in_mongodb(&state.user_collection, event.data.id).await?,
-        _ => {
-            // TODO: This message can be used for further Error visibility.
-            let _message = format!(
-                "Event of topic: `{}` is not a handleable by this service.",
-                event.topic.as_str()
-            );
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
+        _ => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
     Ok(Json(TopicEventResponse::default()))
 }
@@ -217,14 +210,7 @@ pub async fn on_product_variant_version_creation_event(
             )
             .await?;
         }
-        _ => {
-            // TODO: This message can be used for further Error visibility.
-            let _message = format!(
-                "Event of topic: `{}` is not a handleable by this service.",
-                event.topic.as_str()
-            );
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
+        _ => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
     Ok(Json(TopicEventResponse::default()))
 }
@@ -242,14 +228,7 @@ pub async fn on_tax_rate_version_creation_event(
         "tax/tax-rate-version/created" => {
             create_or_update_tax_rate_in_mongodb(&state.tax_rate_collection, tax_rate).await?
         }
-        _ => {
-            // TODO: This message can be used for further Error visibility.
-            let _message = format!(
-                "Event of topic: `{}` is not a handleable by this service.",
-                event.topic.as_str()
-            );
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
+        _ => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
     Ok(Json(TopicEventResponse::default()))
 }
@@ -266,14 +245,7 @@ pub async fn on_user_address_creation_event(
         "address/user-address/created" => {
             insert_user_address_in_mongodb(&state.user_collection, event.data).await?
         }
-        _ => {
-            // TODO: This message can be used for further Error visibility.
-            let _message = format!(
-                "Event of topic: `{}` is not a handleable by this service.",
-                event.topic.as_str()
-            );
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
+        _ => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
     Ok(Json(TopicEventResponse::default()))
 }
@@ -290,14 +262,7 @@ pub async fn on_user_address_archived_event(
         "address/user-address/archived" => {
             remove_user_address_in_mongodb(&state.user_collection, event.data).await?
         }
-        _ => {
-            // TODO: This message can be used for further Error visibility.
-            let _message = format!(
-                "Event of topic: `{}` is not a handleable by this service.",
-                event.topic.as_str()
-            );
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
+        _ => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
     Ok(Json(TopicEventResponse::default()))
 }
@@ -319,14 +284,7 @@ pub async fn on_shipment_creation_failed_event(
         )
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
-        _ => {
-            // TODO: This message can be used for further Error visibility.
-            let _message = format!(
-                "Event of topic: `{}` is not a handleable by this service.",
-                event.topic.as_str()
-            );
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
+        _ => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
     Ok(Json(TopicEventResponse::default()))
 }

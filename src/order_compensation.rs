@@ -42,6 +42,7 @@ impl From<OrderCompensation> for OrderCompensationDTO {
     }
 }
 
+/// Responsible for compensating a shipment based on a failed shipment event. Saves compensation in MongoDB.
 pub async fn compensate_order(
     order_collection: &Collection<Order>,
     order_compensation_collection: &Collection<OrderCompensation>,
@@ -62,6 +63,7 @@ pub async fn compensate_order(
     send_order_compensation_event(order_compensation).await
 }
 
+/// Calculates the amount that the compensation event should compensate. Based on the failed shipment event.
 async fn calculate_amount_to_compensate(
     order_collection: &Collection<Order>,
     data: &ShipmentFailedEventData,
@@ -77,6 +79,7 @@ async fn calculate_amount_to_compensate(
     Ok(amount_to_compensate)
 }
 
+/// Verifies that all of the items are uncompensated, otherwise returns an Err.
 async fn verify_items_uncompensated(
     order_collection: &Collection<OrderCompensation>,
     order_item_ids: &Vec<Uuid>,
@@ -98,6 +101,7 @@ async fn verify_items_uncompensated(
     }
 }
 
+/// Inserts OrderCompensation in MongoDB.
 async fn insert_order_compensation_in_mongodb(
     order_collection: &Collection<OrderCompensation>,
     order_compensation: &OrderCompensation,
@@ -108,12 +112,12 @@ async fn insert_order_compensation_in_mongodb(
     }
 }
 
-/// Sends an `order/order/compensate` created event containing the order context.
+/// Sends an `order/order/compensate` created event containing the amount to compensate.
 async fn send_order_compensation_event(order_compensation: OrderCompensation) -> Result<()> {
     let client = reqwest::Client::new();
     let order_compensation_dto = OrderCompensationDTO::from(order_compensation);
     client
-        .post("http://localhost:3500/v1.0/publish/order/order/created")
+        .post("http://localhost:3500/v1.0/publish/order/order_compensation/created")
         .json(&order_compensation_dto)
         .send()
         .await?;

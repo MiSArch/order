@@ -51,7 +51,7 @@ impl Mutation {
         authenticate_user(&ctx, input.user_id)?;
         let db_client = ctx.data_unchecked::<Database>();
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
-        validate_input(db_client, &input).await?;
+        validate_order_input(db_client, &input).await?;
         let current_timestamp = DateTime::now();
         let internal_order_items: Vec<OrderItem> =
             create_internal_order_items(&db_client, &input, current_timestamp).await?;
@@ -181,7 +181,7 @@ async fn set_status_rejected_in_mongodb(collection: &Collection<Order>, id: Uuid
 }
 
 /// Checks if foreign types exist (MongoDB database populated with events).
-async fn validate_input(db_client: &Database, input: &CreateOrderInput) -> Result<()> {
+async fn validate_order_input(db_client: &Database, input: &CreateOrderInput) -> Result<()> {
     let user_collection: mongodb::Collection<User> = db_client.collection::<User>("users");
     validate_object(&user_collection, input.user_id).await?;
     validate_order_items(&db_client, &input.order_item_inputs).await?;
@@ -245,7 +245,7 @@ async fn create_internal_order_items(
         query_product_variants(db_client, &product_variant_ids).await?;
     let product_variant_versions =
         query_current_product_variant_versions(&product_variants).await?;
-    check_product_variant_availability(&product_variant_ids).await?;
+    check_product_variant_availability(&product_variant_ids, &counts).await?;
     let tax_rate_versions =
         query_current_tax_rate_versions(db_client, &product_variant_versions).await?;
     let discounts = query_discounts(
@@ -333,7 +333,10 @@ type _Any = String;
 struct GetUnreservedProductItemCounts;
 
 /// Checks if product items are available in the inventory service.
-async fn check_product_variant_availability(product_variant_ids: &Vec<Uuid>) -> Result<()> {
+async fn check_product_variant_availability(
+    product_variant_ids: &Vec<Uuid>,
+    counts: &Vec<u64>,
+) -> Result<()> {
     let representations = product_variant_ids
         .iter()
         .cloned()
@@ -355,16 +358,18 @@ async fn check_product_variant_availability(product_variant_ids: &Vec<Uuid>) -> 
         response_body.data.ok_or(Error::new(
             "Response data of `check_product_variant_availability` query is empty.",
         ))?;
-    calculate_availability_from_response_data(response_data)
+    calculate_availability_from_response_data_and_counts(response_data, counts)
 }
 
 /// Calculates the availability by checking if all elements in the reponse data are available.
-fn calculate_availability_from_response_data(
+fn calculate_availability_from_response_data_and_counts(
     response_data: get_unreserved_product_item_counts::ResponseData,
+    counts: &Vec<u64>,
 ) -> Result<()> {
     match response_data
         .entities
         .into_iter()
+        .zip(counts)
         .all(product_variant_is_available)
     {
         true => Ok(()),
@@ -375,19 +380,20 @@ fn calculate_availability_from_response_data(
 }
 
 /// Unwraps an Option of `get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities` to check availability.
-/// Available is defined as at least one unreserved item in stock (represented by `product_items.total_count`).
+/// Available is defined as the amount of items to reserve (`count) greater or equal than the amount of items in stock (`product_items.total_count`).
 ///
-/// Assumes that all options are `Some`, otherwise returns `false`.
+/// Assumes that all options are `Some` and `product_items.total_count` is non-negative, if not returns `false`.
 fn product_variant_is_available(
-    maybe_product_variant_enum: Option<
-        get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities,
-    >,
+    (maybe_product_variant_enum, count): (
+        Option<get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities>,
+        &u64,
+    ),
 ) -> bool {
     let maybe_availability = maybe_product_variant_enum.and_then(|product_variant_enum: get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities| {
         match product_variant_enum {
             get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities::ProductVariant(product_variant) => {
                 product_variant.product_items.and_then(|product_items|
-                    Some(product_items.total_count > 0)
+                    u64::try_from(product_items.total_count).and_then(|product_items_total_count| Ok(product_items_total_count >= *count)).ok()
                 )
             },
         }
