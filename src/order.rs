@@ -36,7 +36,7 @@ pub struct Order {
     /// Address of invoice.
     pub invoice_address: Address,
     /// Total compensatable amount of order.
-    pub total_compensatable_amount: u64,
+    pub compensatable_order_amount: u64,
     /// UUID of payment information that the order should be processed with.
     pub payment_information_id: Uuid,
 }
@@ -144,7 +144,7 @@ pub struct OrderDTO {
     /// OrderItems associated with the order.
     pub order_items: Vec<OrderItemDTO>,
     /// Total compensatable amount of order.
-    pub total_compensatable_amount: u64,
+    pub compensatable_order_amount: u64,
     /// UUID of payment information that the order should be processed with.
     pub payment_information_id: Uuid,
 }
@@ -164,7 +164,7 @@ impl From<Order> for OrderDTO {
             placed_at: value.placed_at,
             rejection_reason: value.rejection_reason,
             order_items: order_item_dtos,
-            total_compensatable_amount: value.total_compensatable_amount,
+            compensatable_order_amount: value.compensatable_order_amount,
             payment_information_id: value.payment_information_id,
         }
     }

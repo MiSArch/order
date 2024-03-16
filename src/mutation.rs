@@ -57,8 +57,8 @@ impl Mutation {
             create_internal_order_items(&db_client, &input, current_timestamp).await?;
         let shipment_address = Address::from(input.shipment_address_id);
         let invoice_address = Address::from(input.invoice_address_id);
-        let total_compensatable_amount =
-            calculate_total_compensatable_amount(&internal_order_items);
+        let compensatable_order_amount =
+            calculate_compensatable_order_amount(&internal_order_items);
         let order = Order {
             _id: Uuid::new(),
             user: User::from(input.user_id),
@@ -69,7 +69,7 @@ impl Mutation {
             internal_order_items,
             shipment_address,
             invoice_address,
-            total_compensatable_amount,
+            compensatable_order_amount,
             payment_information_id: input.payment_information_id,
         };
         match collection.insert_one(order, None).await {
@@ -98,7 +98,7 @@ impl Mutation {
 }
 
 /// Calculates the total compensatable amount of all order items in the input by summing up their `compensatable_amount` attributes.
-fn calculate_total_compensatable_amount(order_items: &Vec<OrderItem>) -> u64 {
+fn calculate_compensatable_order_amount(order_items: &Vec<OrderItem>) -> u64 {
     order_items.iter().map(|o| o.compensatable_amount).sum()
 }
 
@@ -696,7 +696,7 @@ fn convert_graphql_client_lib_discounts_to_simple_object_discounts(
 /// Calculates the total sum of the undiscounted order items. Does not include shipping costs.
 ///
 /// This defines the semantic of the total amount that is passed to the Discount service, for figuring out which Discounts apply.
-/// Do not confuse with `calculate_total_compensatable_amount`, which is the total compensatable amount that the buyer needs to pay.
+/// Do not confuse with `calculate_compensatable_order_amount`, which is the total compensatable amount that the buyer needs to pay.
 ///
 /// Converts value to an `i64` as this is what the GraphQL client library expects.
 fn calculate_order_amount(
