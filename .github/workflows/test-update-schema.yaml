@@ -16,6 +16,7 @@ jobs:
           toolchain: stable
       - uses: actions/checkout@v4
         with:
+          submodules: recursive
           repository: "misarch/schemas"
           path: "schemas"
       - name: Save graphql schemas

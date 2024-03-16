@@ -16,6 +16,7 @@ jobs:
       - name: Install latest stable
         uses: actions-rs/toolchain@v1
         with:
+          submodules: recursive
           profile: minimal
           toolchain: stable
       - uses: actions/checkout@v4
