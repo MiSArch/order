@@ -326,7 +326,7 @@ type _Any = String;
 
 #[derive(GraphQLQuery)]
 #[graphql(
-    schema_path = "schemas/inventory.graphql",
+    schema_path = "schemas_repo/inventory.graphql",
     query_path = "queries/get_unreserved_product_item_counts.graphql",
     response_derives = "Debug"
 )]
@@ -406,7 +406,7 @@ type UUID = Uuid;
 
 #[derive(GraphQLQuery)]
 #[graphql(
-    schema_path = "schemas/shoppingcart.graphql",
+    schema_path = "schemas_repo/shoppingcart.graphql",
     query_path = "queries/get_shopping_cart_product_variant_ids_and_counts.graphql",
     response_derives = "Debug"
 )]
@@ -513,7 +513,7 @@ async fn query_current_tax_rate_versions(
 
 #[derive(GraphQLQuery)]
 #[graphql(
-    schema_path = "schemas/discount.graphql",
+    schema_path = "schemas_repo/discount.graphql",
     query_path = "queries/get_discounts.graphql",
     response_derives = "Debug"
 )]
@@ -708,7 +708,7 @@ fn calculate_order_amount(
 
 // #[derive(GraphQLQuery)]
 // #[graphql(
-//     schema_path = "schemas/shipment.graphql",
+//     schema_path = "schemas_repo/shipment.graphql",
 //     query_path = "queries/get_shipment_fees.graphql",
 //     response_derives = "Debug",
 // )]
