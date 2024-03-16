@@ -321,7 +321,7 @@ fn zip_to_internal_order_items(
 }
 
 // Defines a custom scalar from GraphQL schema.
-// TODO: This is hacky and i do not know which type this should be in a strongly typed language like Rust.
+// TODO: Check if this works somehow. This is hacky and i do not know which type this should be in a strongly typed language like Rust.
 type _Any = String;
 
 #[derive(GraphQLQuery)]
@@ -332,6 +332,7 @@ type _Any = String;
 )]
 struct GetUnreservedProductItemCounts;
 
+// TODO: Check if product variants match with HashMap.
 /// Checks if product items are available in the inventory service.
 async fn check_product_variant_availability(
     product_variant_ids: &Vec<Uuid>,

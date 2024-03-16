@@ -29,7 +29,8 @@ pub struct Order {
     pub placed_at: Option<DateTime>,
     /// The rejection reason if status of the Order is `OrderStatus::Rejected`.
     pub rejection_reason: Option<RejectionReason>,
-    /// The internal vector consisting of OrderItems. TODO: Hide in GraphQL schema, as querying is only supported over connection.
+    /// The internal vector consisting of OrderItems.
+    #[graphql(skip)]
     pub internal_order_items: Vec<OrderItem>,
     /// Address to where the order should be shipped to.
     pub shipment_address: Address,

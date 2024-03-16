@@ -36,7 +36,8 @@ pub struct OrderItem {
     pub compensatable_amount: u64,
     /// Shipment method of order item.
     pub shipment_method: ShipmentMethod,
-    /// The internal vector consisting of Discounts. TODO: Hide in GraphQL schema, as querying is only supported over connection.
+    /// The internal vector consisting of Discounts.
+    #[graphql(skip)]
     pub internal_discounts: BTreeSet<Discount>,
 }
 
