@@ -41,8 +41,8 @@ use user::User;
 mod http_event_service;
 use http_event_service::{
     list_topic_subscriptions, on_id_creation_event, on_product_variant_version_creation_event,
-    on_tax_rate_version_creation_event, on_user_address_archived_event,
-    on_user_address_creation_event, HttpEventServiceState,
+    on_shipment_creation_failed_event, on_tax_rate_version_creation_event,
+    on_user_address_archived_event, on_user_address_creation_event, HttpEventServiceState,
 };
 
 mod authentication;
@@ -118,6 +118,10 @@ async fn build_dapr_router(db_client: Database) -> Router {
         .route(
             "/on-user-address-archived-event",
             post(on_user_address_archived_event),
+        )
+        .route(
+            "/on-shipment-creation-failed-event",
+            post(on_shipment_creation_failed_event),
         )
         .with_state(HttpEventServiceState {
             product_variant_collection,

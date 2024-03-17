@@ -267,7 +267,6 @@ pub async fn on_user_address_archived_event(
     Ok(Json(TopicEventResponse::default()))
 }
 
-// TODO: Complete this implementation.
 /// HTTP endpoint to receive Shipment creation events.
 #[debug_handler(state = HttpEventServiceState)]
 pub async fn on_shipment_creation_failed_event(

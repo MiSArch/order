@@ -362,6 +362,71 @@ async fn check_product_variant_availability(
     calculate_availability_from_response_data_and_counts(response_data, counts)
 }
 
+fn unpack_stock_counts_from_response_data(
+    response_data: get_unreserved_product_item_counts::ResponseData,
+) -> Result<Vec<(Uuid, u64)>> {
+    response_data
+        .entities
+        .into_iter()
+        .map(|maybe_product_variant_enum| {
+            let message = format!("Response data of `check_product_variant_availability` query could not be parsed, `{:?}` is `None`", maybe_product_variant_enum);
+            let product_variant_enum = maybe_product_variant_enum.ok_or(Error::new(message))?;
+            let stock_counts_by_product_variant: Result<(Uuid, u64)> = match product_variant_enum {
+                get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities::ProductVariant(product_variant) => {
+                    Ok(
+                        (
+                            product_variant.id,
+                            {
+                                let message = format!("Response data of `check_product_variant_availability` query could not be parsed, `{:?}` is `None`", product_variant.product_items);
+                                let product_items = product_variant.product_items.ok_or(Error::new(message))?;
+                                let stock_count = u64::try_from(product_items.total_count)?;
+                                stock_count
+                            }
+                        )
+                    )
+                },
+                _ => {
+                    let message = format!("Response data of `check_product_variant_availability` query could not be parsed, `{:?}` is not `get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities::ProductVariant`", product_variant_enum);
+                    Err(Error::new(message))
+                }
+            }
+        }).collect();
+}
+
+/// Remaps the result type of the GraphQL `_entities` query retrieving unreserved product items for product variants.
+///
+/// Builds a Vec with stock counts which is ordered identically to the `product_variant_ids` Vec.
+///
+/// This is needed to reconstruct the order from the GraphQL query output, which does/should not rely on correct ordering.
+fn remap_stock_counts_to_product_variants(
+    discounts_for_product_variants_response_data: Vec<
+        get_discounts::GetDiscountsFindApplicableDiscounts,
+    >,
+    product_variant_ids: &Vec<Uuid>,
+) -> Result<Vec<get_discounts::GetDiscountsFindApplicableDiscounts>> {
+    let mut discounts_for_product_variants: HashMap<
+        Uuid,
+        get_discounts::GetDiscountsFindApplicableDiscounts,
+    > = discounts_for_product_variants_response_data
+        .into_iter()
+        .fold(
+        HashMap::new(),
+        |mut map: HashMap<Uuid, get_discounts::GetDiscountsFindApplicableDiscounts>,
+         discount_for_product_variant: get_discounts::GetDiscountsFindApplicableDiscounts| {
+            map.insert(
+                discount_for_product_variant.product_variant_id,
+                discount_for_product_variant,
+            );
+            map
+        },
+    );
+    let graphql_client_lib_discounts: Result<Vec<get_discounts::GetDiscountsFindApplicableDiscounts>> = product_variant_ids.iter().map(|id| {
+        let message = format!("Product variant of UUID: `{}` is not contained in the result which `findApplicableDiscounts` provides.", id);
+        discounts_for_product_variants.remove(id).ok_or(Error::new(message))
+    }).collect();
+    graphql_client_lib_discounts
+}
+
 /// Calculates the availability by checking if all elements in the reponse data are available.
 fn calculate_availability_from_response_data_and_counts(
     response_data: get_unreserved_product_item_counts::ResponseData,
@@ -640,7 +705,7 @@ fn build_find_applicable_discounts_product_variant_input(
 ///
 /// Builds a discounts Vec which is ordered identically to the `product_variant_ids` Vec.
 ///
-/// This is needed to reconstruct the order from the GraphQL query output, which does not rely on correct ordering.
+/// This is needed to reconstruct the order from the GraphQL query output, which does/should not rely on correct ordering.
 fn remap_discounts_to_product_variants(
     discounts_for_product_variants_response_data: Vec<
         get_discounts::GetDiscountsFindApplicableDiscounts,
