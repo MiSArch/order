@@ -23,7 +23,6 @@ use crate::foreign_types::Discount;
 use crate::foreign_types::ProductVariant;
 use crate::foreign_types::ProductVariantVersion;
 use crate::foreign_types::ShipmentMethod;
-use crate::foreign_types::ShoppingCartItem;
 use crate::foreign_types::TaxRate;
 use crate::foreign_types::TaxRateVersion;
 use crate::mutation_input_structs::CreateOrderInput;
@@ -242,7 +241,8 @@ async fn create_internal_order_items(
     input: &CreateOrderInput,
     current_timestamp: DateTime,
 ) -> Result<Vec<OrderItem>> {
-    let counts_by_product_variant_ids = query_counts_by_product_variant_ids(&input).await?;
+    let (counts_by_product_variant_ids, order_item_input_by_product_variant_ids) =
+        query_counts_by_product_variant_ids(&input).await?;
     let product_variant_ids: Vec<Uuid> = counts_by_product_variant_ids.keys().cloned().collect();
     let product_variants_by_product_variant_ids: HashMap<Uuid, ProductVariant> =
         query_product_variants_by_product_variant_ids(db_client, &product_variant_ids).await?;
@@ -259,10 +259,9 @@ async fn create_internal_order_items(
     )
     .await?;
     let order_item_input_by_product_variant_ids: HashMap<Uuid, OrderItemInput> = todo!();
-    let coupons_ids_by_product_variant_ids: HashMap<Uuid, Vec<Uuid>> = todo!();
     let discounts_by_product_variant_ids = query_discounts_by_product_variant_ids(
         input.user_id,
-        &coupons_ids_by_product_variant_ids,
+        &order_item_input_by_product_variant_ids,
         &product_variant_ids,
         &product_variant_versions_by_product_variant_ids,
         &counts_by_product_variant_ids,
@@ -464,7 +463,7 @@ struct GetShoppingCartProductVariantIdsAndCounts;
 /// Queries product variants from shopping cart item ids from shopping cart service.
 async fn query_counts_by_product_variant_ids(
     input: &CreateOrderInput,
-) -> Result<HashMap<Uuid, u64>> {
+) -> Result<(HashMap<Uuid, u64>, HashMap<Uuid, OrderItemInput>)> {
     let representations = vec![input.user_id.to_string()];
     let variables = get_shopping_cart_product_variant_ids_and_counts::Variables { representations };
 
@@ -485,13 +484,21 @@ async fn query_counts_by_product_variant_ids(
 
     let ids_and_counts_by_shopping_cart_item_ids =
         into_ids_and_counts_by_shopping_cart_item_ids(shopping_cart_response_data);
-    map_order_item_input_to_ids_and_counts(
+    let counts_by_product_variant_ids = build_counts_by_product_variant_ids(
         &input.order_item_inputs,
         &ids_and_counts_by_shopping_cart_item_ids,
-    )
+    )?;
+    let order_item_inputs_by_product_variant_ids = build_order_item_inputs_by_product_variant_ids(
+        &input.order_item_inputs,
+        &ids_and_counts_by_shopping_cart_item_ids,
+    )?;
+    Ok((
+        counts_by_product_variant_ids,
+        order_item_inputs_by_product_variant_ids,
+    ))
 }
 
-// Unwraps Enum and maps the result to a hash map of shopping cart item ids as keys and (product_variant_id, count) as values.
+// Unwraps Enum and maps the result to a HashMap of shopping cart item ids as keys and (product_variant_id, count) as values.
 fn into_ids_and_counts_by_shopping_cart_item_ids(
     ids_and_counts_enum: get_shopping_cart_product_variant_ids_and_counts::GetShoppingCartProductVariantIdsAndCountsEntities,
 ) -> HashMap<Uuid, (Uuid, u64)> {
@@ -504,8 +511,9 @@ fn into_ids_and_counts_by_shopping_cart_item_ids(
     }
 }
 
-/// Maps order item input to queried ids and counts.
-fn map_order_item_input_to_ids_and_counts(
+/// Filters shopping cart items: `ids_and_counts` to map to `order_item_inputs`.
+/// Builds HashMap which maps product variant ids to counts.
+fn build_counts_by_product_variant_ids(
     order_item_inputs: &BTreeSet<OrderItemInput>,
     ids_and_counts: &HashMap<Uuid, (Uuid, u64)>,
 ) -> Result<HashMap<Uuid, u64>> {
@@ -514,6 +522,24 @@ fn map_order_item_input_to_ids_and_counts(
         .map(|e| {
             let id_and_count_ref = ids_and_counts.get(&e.shopping_cart_item_id);
             let id_and_count = id_and_count_ref.and_then(|(id, count)| Some((*id, *count)));
+            id_and_count.ok_or(Error::new(
+                "Shopping cart does not contain shopping cart item specified in order.",
+            ))
+        })
+        .collect()
+}
+
+/// Filters shopping cart items: `ids_and_counts` to map to `order_item_inputs`.
+/// Builds HashMap which maps product variant ids to order item inputs.
+fn build_order_item_inputs_by_product_variant_ids(
+    order_item_inputs: &BTreeSet<OrderItemInput>,
+    ids_and_counts: &HashMap<Uuid, (Uuid, u64)>,
+) -> Result<HashMap<Uuid, OrderItemInput>> {
+    order_item_inputs
+        .iter()
+        .map(|e| {
+            let id_and_count_ref = ids_and_counts.get(&e.shopping_cart_item_id);
+            let id_and_count = id_and_count_ref.and_then(|(id, _)| Some((*id, e.clone())));
             id_and_count.ok_or(Error::new(
                 "Shopping cart does not contain shopping cart item specified in order.",
             ))
@@ -575,14 +601,14 @@ pub struct GetDiscounts;
 /// Queries discounts for coupons from discount service.
 async fn query_discounts_by_product_variant_ids(
     user_id: Uuid,
-    coupons_ids_by_product_variant_ids: &HashMap<Uuid, Vec<Uuid>>,
+    order_item_input_by_product_variant_ids: &HashMap<Uuid, OrderItemInput>,
     product_variant_ids: &Vec<Uuid>,
     product_variant_versions_by_product_variant_ids: &HashMap<Uuid, ProductVariantVersion>,
     counts_by_product_variant_ids: &HashMap<Uuid, u64>,
 ) -> Result<HashMap<Uuid, BTreeSet<Discount>>> {
     let find_applicable_discounts_product_variant_input =
         build_find_applicable_discounts_product_variant_input(
-            coupons_ids_by_product_variant_ids,
+            order_item_input_by_product_variant_ids,
             product_variant_ids,
             counts_by_product_variant_ids,
         )?;
@@ -669,7 +695,7 @@ fn build_find_applicable_discounts_input(
 ///
 /// Describes product variant ids, the count of items planned to order and the coupons, which should be applied.
 fn build_find_applicable_discounts_product_variant_input(
-    coupons_ids_by_product_variant_ids: &HashMap<Uuid, Vec<Uuid>>,
+    order_item_input_by_product_variant_ids: &HashMap<Uuid, OrderItemInput>,
     product_variant_ids: &Vec<Uuid>,
     counts_by_product_variant_ids: &HashMap<Uuid, u64>,
 ) -> Result<Vec<get_discounts::FindApplicableDiscountsProductVariantInput>> {
@@ -679,7 +705,13 @@ fn build_find_applicable_discounts_product_variant_input(
         .iter()
         .map(|id| {
             let count = counts_by_product_variant_ids.get(id).unwrap();
-            let coupon_ids = coupons_ids_by_product_variant_ids.get(id).unwrap().clone();
+            let coupon_ids = order_item_input_by_product_variant_ids
+                .get(id)
+                .unwrap()
+                .coupon_ids
+                .iter()
+                .cloned()
+                .collect();
             let find_applicable_discounts_product_variant_input =
                 get_discounts::FindApplicableDiscountsProductVariantInput {
                     product_variant_id: *id,
