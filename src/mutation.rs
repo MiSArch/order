@@ -159,6 +159,8 @@ async fn set_status_placed_in_mongodb(
 }
 
 /// Updates order to `OrderStatus::Rejected` in MongoDB.
+/// 
+/// This function always returns an Err.
 async fn set_status_rejected_in_mongodb(collection: &Collection<Order>, id: Uuid) -> Result<()> {
     let result = collection
         .update_one(
