@@ -107,6 +107,14 @@ pub enum ShipmentStatus {
     Failed,
 }
 
+#[derive(Deserialize, Debug)]
+pub struct UpdateProductVariantEventData {
+    /// UUID of the product variant to update.
+    pub id: Uuid,
+    /// New visibility of product variant to update.
+    pub is_publicly_visible: String,
+}
+
 /// Service state containing database connections.
 #[derive(Clone)]
 pub struct HttpEventServiceState {
@@ -209,6 +217,23 @@ pub async fn on_product_variant_version_creation_event(
                 product_variant.current_version,
             )
             .await?;
+        }
+        _ => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+    Ok(Json(TopicEventResponse::default()))
+}
+
+/// HTTP endpoint to receive product variant update events.
+#[debug_handler(state = HttpEventServiceState)]
+pub async fn on_product_variant_updated(
+    State(state): State<HttpEventServiceState>,
+    Json(event): Json<Event<UpdateProductVariantEventData>>,
+) -> Result<Json<TopicEventResponse>, StatusCode> {
+    info!("{:?}", event);
+
+    match event.topic.as_str() {
+        "catalog/product-variant/updated" => {
+            update_product_variant_visibility_in_mongodb(&state.user_collection, event.data).await?
         }
         _ => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
@@ -364,6 +389,20 @@ pub async fn remove_user_address_in_mongodb(
         .update_one(
             doc! {"_id": user_address.user_id },
             doc! {"$pull": {"user_address_ids": user_address.id }},
+            None,
+        )
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+async fn update_product_variant_visibility_in_mongodb(collection: &Collection<ProductVariant>, data: UpdateProductVariantEventData) -> _ {
+    match collection
+        .update_one(
+            doc! {"_id": data.id },
+            doc! {"$set": {"user_address_ids": user_address.id }},
             None,
         )
         .await
