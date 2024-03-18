@@ -52,14 +52,10 @@ impl OrderItem {
         tax_rate_version: &TaxRateVersion,
         count: u64,
         internal_discounts: &BTreeSet<Discount>,
-        shipment_fee: u64,
         current_timestamp: DateTime,
     ) -> Self {
-        let compensatable_amount = calculate_compensatable_amount(
-            product_variant_version,
-            &internal_discounts,
-            shipment_fee,
-        );
+        let compensatable_amount =
+            calculate_compensatable_amount(product_variant_version, &internal_discounts);
         let shopping_cart_item = ShoppingCartItem {
             _id: order_item_input.shopping_cart_item_id,
         };
@@ -147,7 +143,6 @@ fn sort_discounts(discounts: &mut Vec<Discount>, order_by: Option<CommonOrderInp
 fn calculate_compensatable_amount(
     product_variant_version: &ProductVariantVersion,
     internal_discounts: &BTreeSet<Discount>,
-    shipment_fee: u64,
 ) -> u64 {
     let undiscounted_price = product_variant_version.price as f64;
     let discounted_price = internal_discounts
@@ -155,7 +150,7 @@ fn calculate_compensatable_amount(
         .fold(undiscounted_price, |prev_price, discount| {
             prev_price * discount.discount
         });
-    let total_price = discounted_price as u64 + shipment_fee;
+    let total_price = discounted_price as u64;
     total_price
 }
 
