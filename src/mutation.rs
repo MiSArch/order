@@ -23,6 +23,7 @@ use crate::foreign_types::Discount;
 use crate::foreign_types::ProductVariant;
 use crate::foreign_types::ProductVariantVersion;
 use crate::foreign_types::ShipmentMethod;
+use crate::foreign_types::ShoppingCartItem;
 use crate::foreign_types::TaxRate;
 use crate::foreign_types::TaxRateVersion;
 use crate::mutation_input_structs::CreateOrderInput;
@@ -217,7 +218,7 @@ async fn validate_coupons(
     let coupon_collection: mongodb::Collection<Coupon> = db_client.collection::<Coupon>("coupons");
     let coupon_ids: Vec<Uuid> = order_item_inputs
         .iter()
-        .map(|o| o.coupons.clone())
+        .map(|o| o.coupon_ids.clone())
         .flatten()
         .collect();
     validate_objects(&coupon_collection, coupon_ids).await
@@ -235,89 +236,89 @@ async fn validate_addresses(db_client: &Database, input: &CreateOrderInput) -> R
 /// Creates OrderItems from OrderItemInputs.
 ///
 /// Used before creating orders.
+/// Each order can only contain an order item with a specific product variant once.
 async fn create_internal_order_items(
     db_client: &Database,
     input: &CreateOrderInput,
     current_timestamp: DateTime,
 ) -> Result<Vec<OrderItem>> {
-    let (product_variant_ids, counts) = query_product_variant_ids_and_counts(&input).await?;
-    let product_variants: Vec<ProductVariant> =
-        query_product_variants(db_client, &product_variant_ids).await?;
-    let product_variant_versions =
-        query_current_product_variant_versions(&product_variants).await?;
-    check_product_variant_availability(&product_variant_ids, &counts).await?;
-    let tax_rate_versions =
-        query_current_tax_rate_versions(db_client, &product_variant_versions).await?;
-    let discounts = query_discounts(
-        &input,
-        &product_variant_ids,
-        &product_variant_versions,
-        &counts,
+    let counts_by_product_variant_ids = query_counts_by_product_variant_ids(&input).await?;
+    let product_variant_ids: Vec<Uuid> = counts_by_product_variant_ids.keys().cloned().collect();
+    let product_variants_by_product_variant_ids: HashMap<Uuid, ProductVariant> =
+        query_product_variants_by_product_variant_ids(db_client, &product_variant_ids).await?;
+    let product_variant_versions_by_product_variant_ids =
+        query_product_variant_versions_by_product_variant_ids(
+            &product_variants_by_product_variant_ids,
+        )
+        .await;
+    check_product_variant_availability(&product_variant_ids, &counts_by_product_variant_ids)
+        .await?;
+    let tax_rate_versions_by_product_variant_ids = query_tax_rate_versions_by_product_variant_ids(
+        db_client,
+        &product_variant_versions_by_product_variant_ids,
     )
     .await?;
-    let shipment_fees =
-        query_shipment_fees(&input.order_item_inputs, &product_variant_versions).await?;
+    let order_item_input_by_product_variant_ids: HashMap<Uuid, OrderItemInput> = todo!();
+    let coupons_ids_by_product_variant_ids: HashMap<Uuid, Vec<Uuid>> = todo!();
+    let discounts_by_product_variant_ids = query_discounts_by_product_variant_ids(
+        input.user_id,
+        &coupons_ids_by_product_variant_ids,
+        &product_variant_ids,
+        &product_variant_versions_by_product_variant_ids,
+        &counts_by_product_variant_ids,
+    )
+    .await?;
+    let shipment_fees_by_product_variant_ids = query_shipment_fees_by_product_variant_ids(
+        &input.order_item_inputs,
+        &product_variants_by_product_variant_ids,
+    )
+    .await?;
     let internal_order_items = zip_to_internal_order_items(
-        input,
-        product_variants,
-        product_variant_versions,
-        tax_rate_versions,
-        counts,
-        discounts,
-        shipment_fees,
+        order_item_input_by_product_variant_ids,
+        product_variants_by_product_variant_ids,
+        product_variant_versions_by_product_variant_ids,
+        tax_rate_versions_by_product_variant_ids,
+        counts_by_product_variant_ids,
+        discounts_by_product_variant_ids,
+        shipment_fees_by_product_variant_ids,
         current_timestamp,
     );
     Ok(internal_order_items)
 }
 
-/// Takes all retrieved values needed for creating the internal order items and zip them to create the according order items.
 fn zip_to_internal_order_items(
-    input: &CreateOrderInput,
-    product_variants: Vec<ProductVariant>,
-    product_variant_versions: Vec<ProductVariantVersion>,
-    tax_rate_versions: Vec<TaxRateVersion>,
-    counts: Vec<u64>,
-    discounts: Vec<BTreeSet<Discount>>,
-    shipment_fees: Vec<u64>,
+    order_item_input_by_product_variant_ids: HashMap<Uuid, OrderItemInput>,
+    product_variants_by_product_variant_ids: HashMap<Uuid, ProductVariant>,
+    product_variant_versions_by_product_variant_ids: HashMap<Uuid, ProductVariantVersion>,
+    tax_rate_versions_by_product_variant_ids: HashMap<Uuid, TaxRateVersion>,
+    counts_by_product_variant_ids: HashMap<Uuid, u64>,
+    discounts_by_product_variant_ids: HashMap<Uuid, BTreeSet<Discount>>,
+    shipment_fees_by_product_variant_ids: HashMap<Uuid, u64>,
     current_timestamp: DateTime,
 ) -> Vec<OrderItem> {
-    let internal_order_items: Vec<OrderItem> = input
-        .order_item_inputs
+    product_variants_by_product_variant_ids
         .iter()
-        .zip(product_variants)
-        .zip(product_variant_versions)
-        .zip(tax_rate_versions)
-        .zip(counts)
-        .zip(discounts)
-        .zip(shipment_fees)
-        .map(
-            |(
-                (
-                    (
-                        (
-                            ((order_item_input, product_variant), product_variant_version),
-                            tax_rate_version,
-                        ),
-                        count,
-                    ),
-                    discounts,
-                ),
-                shipment_fee,
-            )| {
-                OrderItem::new(
-                    order_item_input,
-                    product_variant,
-                    product_variant_version,
-                    tax_rate_version,
-                    count,
-                    discounts,
-                    shipment_fee,
-                    current_timestamp,
-                )
-            },
-        )
-        .collect();
-    internal_order_items
+        .map(|(id, product_variant)| {
+            let order_item_input = order_item_input_by_product_variant_ids.get(id).unwrap();
+            let product_variant_version = product_variant_versions_by_product_variant_ids
+                .get(id)
+                .unwrap();
+            let tax_rate_version = tax_rate_versions_by_product_variant_ids.get(id).unwrap();
+            let count = counts_by_product_variant_ids.get(id).unwrap();
+            let internal_discounts = discounts_by_product_variant_ids.get(id).unwrap();
+            let shipment_fee = shipment_fees_by_product_variant_ids.get(id).unwrap();
+            OrderItem::new(
+                order_item_input,
+                product_variant,
+                product_variant_version,
+                tax_rate_version,
+                *count,
+                internal_discounts,
+                *shipment_fee,
+                current_timestamp,
+            )
+        })
+        .collect()
 }
 
 // Defines a custom scalar from GraphQL schema.
@@ -332,11 +333,10 @@ type _Any = String;
 )]
 struct GetUnreservedProductItemCounts;
 
-// TODO: Check if product variants match with HashMap.
 /// Checks if product items are available in the inventory service.
 async fn check_product_variant_availability(
     product_variant_ids: &Vec<Uuid>,
-    counts: &Vec<u64>,
+    counts_by_product_variant_ids: &HashMap<Uuid, u64>,
 ) -> Result<()> {
     let representations = product_variant_ids
         .iter()
@@ -359,12 +359,18 @@ async fn check_product_variant_availability(
         response_body.data.ok_or(Error::new(
             "Response data of `check_product_variant_availability` query is empty.",
         ))?;
-    calculate_availability_from_response_data_and_counts(response_data, counts)
+    let stock_counts_by_product_variant_ids =
+        build_stock_counts_by_product_variant_from_response_data(response_data)?;
+    calculate_availability_of_product_variant_ids(
+        &stock_counts_by_product_variant_ids,
+        &counts_by_product_variant_ids,
+    )
 }
 
-fn unpack_stock_counts_from_response_data(
+/// Remaps the result type of the GraphQL `_entities` query retrieving stock counts for product variants.
+fn build_stock_counts_by_product_variant_from_response_data(
     response_data: get_unreserved_product_item_counts::ResponseData,
-) -> Result<Vec<(Uuid, u64)>> {
+) -> Result<HashMap<Uuid, u64>> {
     response_data
         .entities
         .into_iter()
@@ -373,15 +379,13 @@ fn unpack_stock_counts_from_response_data(
             let product_variant_enum = maybe_product_variant_enum.ok_or(Error::new(message))?;
             let stock_counts_by_product_variant: Result<(Uuid, u64)> = match product_variant_enum {
                 get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities::ProductVariant(product_variant) => {
+                    let message = format!("Response data of `check_product_variant_availability` query could not be parsed, `{:?}` is `None`", product_variant.product_items);
+                    let product_items = product_variant.product_items.ok_or(Error::new(message))?;
+                    let stock_count = u64::try_from(product_items.total_count)?;
                     Ok(
                         (
                             product_variant.id,
-                            {
-                                let message = format!("Response data of `check_product_variant_availability` query could not be parsed, `{:?}` is `None`", product_variant.product_items);
-                                let product_items = product_variant.product_items.ok_or(Error::new(message))?;
-                                let stock_count = u64::try_from(product_items.total_count)?;
-                                stock_count
-                            }
+                            stock_count
                         )
                     )
                 },
@@ -389,15 +393,33 @@ fn unpack_stock_counts_from_response_data(
                     let message = format!("Response data of `check_product_variant_availability` query could not be parsed, `{:?}` is not `get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities::ProductVariant`", product_variant_enum);
                     Err(Error::new(message))
                 }
-            }
-        }).collect();
+            };
+            stock_counts_by_product_variant
+        }).collect()
+}
+
+/// Calculates the availability based on the actual and expected stock counts based on the product variant ids.
+///
+/// The expected amount or more product items need to be in stock for a product variant to be counted as available.
+/// All product variants need to be available for this function to pass without an Err.
+fn calculate_availability_of_product_variant_ids(
+    stock_counts_by_product_variant_ids: &HashMap<Uuid, u64>,
+    expected_stock_counts_by_product_variant_ids: &HashMap<Uuid, u64>,
+) -> Result<()> {
+    let availabilites: Vec<bool> = expected_stock_counts_by_product_variant_ids.iter().map(|(id, expected_count )| {
+        let message = format!("Stock count for product variant of UUID: `{}` is not present in `stock_counts_by_product_variant_ids`.", id);
+        let count = stock_counts_by_product_variant_ids.get(id).ok_or(Error::new(message))?;
+        Ok(*count >= *expected_count)
+    }).collect::<Result<Vec<bool>>>()?;
+    match availabilites.into_iter().all(|b| b == true) {
+        true => Ok(()),
+        false => Err(Error::new(
+            "Not all requested product variants are available.",
+        )),
+    }
 }
 
 /// Remaps the result type of the GraphQL `_entities` query retrieving unreserved product items for product variants.
-///
-/// Builds a Vec with stock counts which is ordered identically to the `product_variant_ids` Vec.
-///
-/// This is needed to reconstruct the order from the GraphQL query output, which does/should not rely on correct ordering.
 fn remap_stock_counts_to_product_variants(
     discounts_for_product_variants_response_data: Vec<
         get_discounts::GetDiscountsFindApplicableDiscounts,
@@ -427,46 +449,6 @@ fn remap_stock_counts_to_product_variants(
     graphql_client_lib_discounts
 }
 
-/// Calculates the availability by checking if all elements in the reponse data are available.
-fn calculate_availability_from_response_data_and_counts(
-    response_data: get_unreserved_product_item_counts::ResponseData,
-    counts: &Vec<u64>,
-) -> Result<()> {
-    match response_data
-        .entities
-        .into_iter()
-        .zip(counts)
-        .all(product_variant_is_available)
-    {
-        true => Ok(()),
-        false => Err(Error::new(
-            "Not all product variants associated with order items in order are available.",
-        )),
-    }
-}
-
-/// Unwraps an Option of `get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities` to check availability.
-/// Available is defined as the amount of items to reserve (`count) greater or equal than the amount of items in stock (`product_items.total_count`).
-///
-/// Assumes that all options are `Some` and `product_items.total_count` is non-negative, if not returns `false`.
-fn product_variant_is_available(
-    (maybe_product_variant_enum, count): (
-        Option<get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities>,
-        &u64,
-    ),
-) -> bool {
-    let maybe_availability = maybe_product_variant_enum.and_then(|product_variant_enum: get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities| {
-        match product_variant_enum {
-            get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities::ProductVariant(product_variant) => {
-                product_variant.product_items.and_then(|product_items|
-                    u64::try_from(product_items.total_count).and_then(|product_items_total_count| Ok(product_items_total_count >= *count)).ok()
-                )
-            },
-        }
-    });
-    maybe_availability.unwrap_or(false)
-}
-
 // Defines a custom scalar from GraphQL schema.
 type UUID = Uuid;
 
@@ -480,9 +462,9 @@ struct GetShoppingCartProductVariantIdsAndCounts;
 
 // TODO: Authentication.
 /// Queries product variants from shopping cart item ids from shopping cart service.
-async fn query_product_variant_ids_and_counts(
+async fn query_counts_by_product_variant_ids(
     input: &CreateOrderInput,
-) -> Result<(Vec<Uuid>, Vec<u64>)> {
+) -> Result<HashMap<Uuid, u64>> {
     let representations = vec![input.user_id.to_string()];
     let variables = get_shopping_cart_product_variant_ids_and_counts::Variables { representations };
 
@@ -496,20 +478,17 @@ async fn query_product_variant_ids_and_counts(
         .await?;
     let response_body: Response<get_shopping_cart_product_variant_ids_and_counts::ResponseData> =
         res.json().await?;
-    let message = "Response data of `query_product_variant_ids_and_counts` query is empty.";
+    let message = "Response data of `query_counts_by_product_variant_ids` query is empty.";
     let mut response_data: get_shopping_cart_product_variant_ids_and_counts::ResponseData =
         response_body.data.ok_or(Error::new(message))?;
     let shopping_cart_response_data = response_data.entities.remove(0).ok_or(message)?;
 
     let ids_and_counts_by_shopping_cart_item_ids =
         into_ids_and_counts_by_shopping_cart_item_ids(shopping_cart_response_data);
-    let ids_and_counts = map_order_item_input_to_ids_and_counts(
+    map_order_item_input_to_ids_and_counts(
         &input.order_item_inputs,
         &ids_and_counts_by_shopping_cart_item_ids,
-    )?;
-    let ids = ids_and_counts.iter().map(|(id, _)| *id).collect();
-    let counts = ids_and_counts.iter().map(|(_, count)| *count).collect();
-    Ok((ids, counts))
+    )
 }
 
 // Unwraps Enum and maps the result to a hash map of shopping cart item ids as keys and (product_variant_id, count) as values.
@@ -529,7 +508,7 @@ fn into_ids_and_counts_by_shopping_cart_item_ids(
 fn map_order_item_input_to_ids_and_counts(
     order_item_inputs: &BTreeSet<OrderItemInput>,
     ids_and_counts: &HashMap<Uuid, (Uuid, u64)>,
-) -> Result<Vec<(Uuid, u64)>> {
+) -> Result<HashMap<Uuid, u64>> {
     order_item_inputs
         .iter()
         .map(|e| {
@@ -543,38 +522,46 @@ fn map_order_item_input_to_ids_and_counts(
 }
 
 // Obtains product variants from product variant ids.
-async fn query_product_variants(
+async fn query_product_variants_by_product_variant_ids(
     db_client: &Database,
     product_variant_ids: &Vec<Uuid>,
-) -> Result<Vec<ProductVariant>> {
+) -> Result<HashMap<Uuid, ProductVariant>> {
     let collection: Collection<ProductVariant> =
         db_client.collection::<ProductVariant>("product_variants");
     query_objects(&collection, product_variant_ids).await
 }
 
 /// Obtains current product variant versions using product variants.
-async fn query_current_product_variant_versions(
-    product_variants: &Vec<ProductVariant>,
-) -> Result<Vec<ProductVariantVersion>> {
-    let current_product_variant_versions: Vec<ProductVariantVersion> =
-        product_variants.iter().map(|p| p.current_version).collect();
-    Ok(current_product_variant_versions)
+async fn query_product_variant_versions_by_product_variant_ids(
+    product_variants_by_product_variant_ids: &HashMap<Uuid, ProductVariant>,
+) -> HashMap<Uuid, ProductVariantVersion> {
+    let product_variant_versions_by_product_variant_ids: HashMap<Uuid, ProductVariantVersion> =
+        product_variants_by_product_variant_ids
+            .iter()
+            .map(|(id, p)| (*id, p.current_version))
+            .collect();
+    product_variant_versions_by_product_variant_ids
 }
 
 /// Obtains current tax rate version for tax rate in product variant versions.
-async fn query_current_tax_rate_versions(
+async fn query_tax_rate_versions_by_product_variant_ids(
     db_client: &Database,
-    product_variant_versions: &Vec<ProductVariantVersion>,
-) -> Result<Vec<TaxRateVersion>> {
+    product_variant_versions_by_product_variant_ids: &HashMap<Uuid, ProductVariantVersion>,
+) -> Result<HashMap<Uuid, TaxRateVersion>> {
     let collection: Collection<TaxRate> = db_client.collection::<TaxRate>("tax_rates");
-    let tax_rate_ids: Vec<Uuid> = product_variant_versions
+    let tax_rate_ids: Vec<Uuid> = product_variant_versions_by_product_variant_ids
         .iter()
-        .map(|p| p.tax_rate_id)
+        .map(|(id, p)| p.tax_rate_id)
         .collect();
     let tax_rates = query_objects(&collection, &tax_rate_ids).await?;
-    let current_tax_rate_versions: Vec<TaxRateVersion> =
-        tax_rates.iter().map(|p| p.current_version).collect();
-    Ok(current_tax_rate_versions)
+    let tax_rate_versions_by_product_variant_ids = product_variant_versions_by_product_variant_ids.iter()
+        .map(|(id, p)| {
+            let message = format!("Stock count for product variant of UUID: `{}` is not present in `product_variant_versions_by_product_variant_ids`.", id);
+            let tax_rate = tax_rates.get(&p.tax_rate_id).ok_or(Error::new(message))?;
+            Ok((*id, tax_rate.current_version))
+        })
+        .collect::<Result<HashMap<Uuid, TaxRateVersion>>>()?;
+    Ok(tax_rate_versions_by_product_variant_ids)
 }
 
 #[derive(GraphQLQuery)]
@@ -586,17 +573,22 @@ async fn query_current_tax_rate_versions(
 pub struct GetDiscounts;
 
 /// Queries discounts for coupons from discount service.
-async fn query_discounts(
-    input: &CreateOrderInput,
+async fn query_discounts_by_product_variant_ids(
+    user_id: Uuid,
+    coupons_ids_by_product_variant_ids: &HashMap<Uuid, Vec<Uuid>>,
     product_variant_ids: &Vec<Uuid>,
-    product_variant_versions: &Vec<ProductVariantVersion>,
-    counts: &Vec<u64>,
-) -> Result<Vec<BTreeSet<Discount>>> {
+    product_variant_versions_by_product_variant_ids: &HashMap<Uuid, ProductVariantVersion>,
+    counts_by_product_variant_ids: &HashMap<Uuid, u64>,
+) -> Result<HashMap<Uuid, BTreeSet<Discount>>> {
     let find_applicable_discounts_product_variant_input =
-        build_find_applicable_discounts_product_variant_input(input, product_variant_ids, counts)?;
-    let order_amount = calculate_order_amount(&product_variant_versions)?;
+        build_find_applicable_discounts_product_variant_input(
+            coupons_ids_by_product_variant_ids,
+            product_variant_ids,
+            counts_by_product_variant_ids,
+        )?;
+    let order_amount = calculate_order_amount(&product_variant_versions_by_product_variant_ids)?;
     let find_applicable_discounts_input = build_find_applicable_discounts_input(
-        input,
+        user_id,
         find_applicable_discounts_product_variant_input,
         order_amount,
     );
@@ -623,15 +615,17 @@ async fn query_discounts(
 fn build_discounts_from_response_data(
     response_data: get_discounts::ResponseData,
     product_variant_ids: &Vec<Uuid>,
-) -> Result<Vec<BTreeSet<Discount>>> {
+) -> Result<HashMap<Uuid, BTreeSet<Discount>>> {
     let discounts_for_product_variants_response_data: Vec<
         get_discounts::GetDiscountsFindApplicableDiscounts,
     > = response_data.find_applicable_discounts;
-    let graphql_client_lib_discounts: Vec<get_discounts::GetDiscountsFindApplicableDiscounts> =
-        remap_discounts_to_product_variants(
-            discounts_for_product_variants_response_data,
-            &product_variant_ids,
-        )?;
+    let graphql_client_lib_discounts: HashMap<
+        Uuid,
+        get_discounts::GetDiscountsFindApplicableDiscounts,
+    > = remap_discounts_to_product_variants(
+        discounts_for_product_variants_response_data,
+        &product_variant_ids,
+    )?;
     let simple_object_discounts = convert_graphql_client_lib_discounts_to_simple_object_discounts(
         graphql_client_lib_discounts,
     );
@@ -651,14 +645,14 @@ fn build_discounts_from_response_data(
 ///
 /// Describes the order amount, which is the sum of all product variant version prices, a Vec of `get_discounts::FindApplicableDiscountsProductVariantInput` and the user which the discounts are be queried for.
 fn build_find_applicable_discounts_input(
-    input: &CreateOrderInput,
+    user_id: Uuid,
     find_applicable_discounts_product_variant_input: Vec<
         get_discounts::FindApplicableDiscountsProductVariantInput,
     >,
     order_amount: i64,
 ) -> get_discounts::FindApplicableDiscountsInput {
     let find_applicable_discounts_input = get_discounts::FindApplicableDiscountsInput {
-        user_id: input.user_id,
+        user_id,
         product_variants: find_applicable_discounts_product_variant_input,
         order_amount,
     };
@@ -675,23 +669,22 @@ fn build_find_applicable_discounts_input(
 ///
 /// Describes product variant ids, the count of items planned to order and the coupons, which should be applied.
 fn build_find_applicable_discounts_product_variant_input(
-    input: &CreateOrderInput,
+    coupons_ids_by_product_variant_ids: &HashMap<Uuid, Vec<Uuid>>,
     product_variant_ids: &Vec<Uuid>,
-    counts: &Vec<u64>,
+    counts_by_product_variant_ids: &HashMap<Uuid, u64>,
 ) -> Result<Vec<get_discounts::FindApplicableDiscountsProductVariantInput>> {
     let find_applicable_discounts_product_variant_input: Vec<
         get_discounts::FindApplicableDiscountsProductVariantInput,
-    > = input
-        .order_item_inputs
+    > = product_variant_ids
         .iter()
-        .zip(product_variant_ids)
-        .zip(counts)
-        .map(|((order_item_input, product_variant_id), count)| {
+        .map(|id| {
+            let count = counts_by_product_variant_ids.get(id).unwrap();
+            let coupon_ids = coupons_ids_by_product_variant_ids.get(id).unwrap().clone();
             let find_applicable_discounts_product_variant_input =
                 get_discounts::FindApplicableDiscountsProductVariantInput {
-                    product_variant_id: *product_variant_id,
+                    product_variant_id: *id,
                     count: i64::try_from(*count)?,
-                    coupon_ids: order_item_input.coupons.iter().cloned().collect(),
+                    coupon_ids,
                 };
             Ok::<get_discounts::FindApplicableDiscountsProductVariantInput, Error>(
                 find_applicable_discounts_product_variant_input,
@@ -702,16 +695,12 @@ fn build_find_applicable_discounts_product_variant_input(
 }
 
 /// Remaps the result type of the GraphQL `findApplicableDiscounts` query to the the according product variants.
-///
-/// Builds a discounts Vec which is ordered identically to the `product_variant_ids` Vec.
-///
-/// This is needed to reconstruct the order from the GraphQL query output, which does/should not rely on correct ordering.
 fn remap_discounts_to_product_variants(
     discounts_for_product_variants_response_data: Vec<
         get_discounts::GetDiscountsFindApplicableDiscounts,
     >,
     product_variant_ids: &Vec<Uuid>,
-) -> Result<Vec<get_discounts::GetDiscountsFindApplicableDiscounts>> {
+) -> Result<HashMap<Uuid, get_discounts::GetDiscountsFindApplicableDiscounts>> {
     let mut discounts_for_product_variants: HashMap<
         Uuid,
         get_discounts::GetDiscountsFindApplicableDiscounts,
@@ -728,34 +717,33 @@ fn remap_discounts_to_product_variants(
             map
         },
     );
-    let graphql_client_lib_discounts: Result<Vec<get_discounts::GetDiscountsFindApplicableDiscounts>> = product_variant_ids.iter().map(|id| {
+    product_variant_ids.iter().map(|id| {
         let message = format!("Product variant of UUID: `{}` is not contained in the result which `findApplicableDiscounts` provides.", id);
-        discounts_for_product_variants.remove(id).ok_or(Error::new(message))
-    }).collect();
-    graphql_client_lib_discounts
+        let discounts =  discounts_for_product_variants.remove(id).ok_or(Error::new(message))?;
+        Ok((*id, discounts))
+    }).collect()
 }
 
 /// Converts the GraphQL client library generated discounts to the internally used discounts, which are GraphQL `SimpleObject`.
 ///
 /// This enables the discounts to be retrivable from the GraphQL endpoints of this service.
 fn convert_graphql_client_lib_discounts_to_simple_object_discounts(
-    graphql_client_lib_discounts: Vec<get_discounts::GetDiscountsFindApplicableDiscounts>,
-) -> Vec<BTreeSet<Discount>> {
+    graphql_client_lib_discounts: HashMap<Uuid, get_discounts::GetDiscountsFindApplicableDiscounts>,
+) -> HashMap<Uuid, BTreeSet<Discount>> {
     graphql_client_lib_discounts
         .into_iter()
-        .map(
-            |discounts: get_discounts::GetDiscountsFindApplicableDiscounts| {
-                discounts
-                    .discounts
-                    .into_iter()
-                    .map(
-                        |discount: get_discounts::GetDiscountsFindApplicableDiscountsDiscounts| {
-                            Discount::from(discount)
-                        },
-                    )
-                    .collect()
-            },
-        )
+        .map(|(id, discounts)| {
+            let discounts = discounts
+                .discounts
+                .into_iter()
+                .map(
+                    |discount: get_discounts::GetDiscountsFindApplicableDiscountsDiscounts| {
+                        Discount::from(discount)
+                    },
+                )
+                .collect();
+            (id, discounts)
+        })
         .collect()
 }
 
@@ -766,9 +754,12 @@ fn convert_graphql_client_lib_discounts_to_simple_object_discounts(
 ///
 /// Converts value to an `i64` as this is what the GraphQL client library expects.
 fn calculate_order_amount(
-    product_variant_versions: &Vec<ProductVariantVersion>,
+    pproduct_variant_versions_by_product_variant_ids: &HashMap<Uuid, ProductVariantVersion>,
 ) -> Result<i64, TryFromIntError> {
-    let order_amount: u64 = product_variant_versions.iter().map(|p| p.price).sum();
+    let order_amount: u64 = pproduct_variant_versions_by_product_variant_ids
+        .iter()
+        .map(|(_, p)| p.price)
+        .sum();
     i64::try_from(order_amount)
 }
 
@@ -780,10 +771,10 @@ fn calculate_order_amount(
 // )]
 struct GetShipmentFees;
 /// Queries shipment fees for product variant versions and counts.
-async fn query_shipment_fees(
+async fn query_shipment_fees_by_product_variant_ids(
     order_item_inputs: &BTreeSet<OrderItemInput>,
-    product_variant_versions: &Vec<ProductVariantVersion>,
-) -> Result<Vec<u64>> {
+    product_variants_by_product_variant_ids: &HashMap<Uuid, ProductVariant>,
+) -> Result<HashMap<Uuid, u64>> {
     todo!()
 }
 

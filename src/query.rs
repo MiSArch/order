@@ -1,4 +1,4 @@
-use std::any::type_name;
+use std::{any::type_name, collections::HashMap};
 
 use crate::{authentication::authenticate_user, order_item::OrderItem, user::User, Order};
 use async_graphql::{Context, Error, Object, Result};
@@ -147,16 +147,25 @@ pub async fn query_object<T: for<'a> Deserialize<'a> + Unpin + Send + Sync>(
 ///
 /// * `connection` - MongoDB database connection.
 /// * `ids` - UUIDs of objects.
-pub async fn query_objects<T: for<'a> Deserialize<'a> + Unpin + Send + Sync>(
+pub async fn query_objects<T: for<'a> Deserialize<'a> + Unpin + Send + Sync + Clone>(
     collection: &Collection<T>,
     object_ids: &Vec<Uuid>,
-) -> Result<Vec<T>> {
+) -> Result<HashMap<Uuid, T>>
+where
+    Uuid: From<T>,
+{
     match collection
         .find(doc! {"_id": { "$in": &object_ids } }, None)
         .await
     {
         Ok(cursor) => {
-            let objects: Vec<T> = cursor.try_collect().await?;
+            let objects: HashMap<Uuid, T> = cursor
+                .try_fold(HashMap::new(), |mut map, result| async move {
+                    let id = Uuid::from(result.clone());
+                    map.insert(id, result);
+                    Ok(map)
+                })
+                .await?;
             Ok(objects)
         }
         Err(_) => {

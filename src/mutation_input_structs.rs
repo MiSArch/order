@@ -26,7 +26,7 @@ pub struct OrderItemInput {
     /// UUID of shipment method to use with order item.
     pub shipment_method_id: Uuid,
     /// UUIDs of coupons to use with order item.
-    pub coupons: HashSet<Uuid>,
+    pub coupon_ids: HashSet<Uuid>,
 }
 
 impl PartialOrd for OrderItemInput {

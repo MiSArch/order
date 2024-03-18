@@ -47,11 +47,11 @@ impl OrderItem {
     /// Queries ProductVariantVersion from MongoDB.
     pub fn new(
         order_item_input: &OrderItemInput,
-        product_variant: ProductVariant,
-        product_variant_version: ProductVariantVersion,
-        tax_rate_version: TaxRateVersion,
+        product_variant: &ProductVariant,
+        product_variant_version: &ProductVariantVersion,
+        tax_rate_version: &TaxRateVersion,
         count: u64,
-        internal_discounts: BTreeSet<Discount>,
+        internal_discounts: &BTreeSet<Discount>,
         shipment_fee: u64,
         current_timestamp: DateTime,
     ) -> Self {
@@ -69,14 +69,14 @@ impl OrderItem {
         Self {
             _id: Uuid::new(),
             created_at: current_timestamp,
-            product_variant,
-            product_variant_version,
-            tax_rate_version,
+            product_variant: product_variant.clone(),
+            product_variant_version: product_variant_version.clone(),
+            tax_rate_version: tax_rate_version.clone(),
             shopping_cart_item,
             count,
             compensatable_amount,
             shipment_method,
-            internal_discounts,
+            internal_discounts: internal_discounts.clone(),
         }
     }
 }
@@ -145,7 +145,7 @@ fn sort_discounts(discounts: &mut Vec<Discount>, order_by: Option<CommonOrderInp
 
 /// Applies fees and discounts to calculate the compensatable amount of an OrderItem.
 fn calculate_compensatable_amount(
-    product_variant_version: ProductVariantVersion,
+    product_variant_version: &ProductVariantVersion,
     internal_discounts: &BTreeSet<Discount>,
     shipment_fee: u64,
 ) -> u64 {
@@ -183,6 +183,7 @@ pub struct OrderItemDTO {
     pub compensatable_amount: u64,
     /// UUID of shipment method of order item.
     pub shipment_method_id: Uuid,
+    /// UUIDs of discounts applied to order item.
     pub discount_ids: Vec<Uuid>,
 }
 

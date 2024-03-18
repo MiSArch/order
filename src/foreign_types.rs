@@ -167,6 +167,12 @@ impl From<TaxRate> for Bson {
     }
 }
 
+impl From<TaxRate> for Uuid {
+    fn from(value: TaxRate) -> Self {
+        value._id
+    }
+}
+
 /// Foreign type of a tax rate version.
 #[derive(Debug, Serialize, Deserialize, Copy, Clone, SimpleObject)]
 #[graphql(unresolvable)]
