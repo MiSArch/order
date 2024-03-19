@@ -82,7 +82,7 @@ pub struct UserAddressEventData {
     /// UUID of the user address.
     pub id: Uuid,
     /// UUID of user of user address.
-    pub user_id: f64,
+    pub user_id: Uuid,
 }
 
 #[derive(Deserialize, Debug)]
