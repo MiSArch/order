@@ -248,6 +248,42 @@ async fn create_internal_order_items<'a>(
 ) -> Result<Vec<OrderItem>> {
     let db_client = ctx.data::<Database>()?;
     let authorized_header = ctx.data::<AuthorizedUserHeader>()?;
+    let (
+        counts_by_product_variant_ids,
+        order_item_input_by_product_variant_ids,
+        product_variants_by_product_variant_ids,
+        product_variant_versions_by_product_variant_ids,
+        tax_rate_versions_by_product_variant_ids,
+        discounts_by_product_variant_ids,
+    ) = query_or_obtain_order_item_attributes(authorized_header, input, db_client).await?;
+    let internal_order_items = zip_to_internal_order_items(
+        order_item_input_by_product_variant_ids,
+        product_variants_by_product_variant_ids,
+        product_variant_versions_by_product_variant_ids,
+        tax_rate_versions_by_product_variant_ids,
+        counts_by_product_variant_ids,
+        discounts_by_product_variant_ids,
+        current_timestamp,
+    );
+    Ok(internal_order_items)
+}
+
+/// Queries or obtains the attributes necessary for order item construction.
+async fn query_or_obtain_order_item_attributes(
+    authorized_header: &AuthorizedUserHeader,
+    input: &CreateOrderInput,
+    db_client: &Database,
+) -> Result<
+    (
+        HashMap<Uuid, u64>,
+        HashMap<Uuid, OrderItemInput>,
+        HashMap<Uuid, ProductVariant>,
+        HashMap<Uuid, ProductVariantVersion>,
+        HashMap<Uuid, TaxRateVersion>,
+        HashMap<Uuid, BTreeSet<Discount>>,
+    ),
+    Error,
+> {
     let (counts_by_product_variant_ids, order_item_input_by_product_variant_ids) =
         query_counts_by_product_variant_ids(authorized_header, &input).await?;
     let product_variant_ids: Vec<Uuid> = counts_by_product_variant_ids.keys().cloned().collect();
@@ -273,23 +309,20 @@ async fn create_internal_order_items<'a>(
         &counts_by_product_variant_ids,
     )
     .await?;
-    // TODO: Rediscuss shipment fees semantics and come to a solution how those should be implemented.
     let _shipment_fees = query_shipment_fees(
         &order_item_input_by_product_variant_ids,
         &product_variant_versions_by_product_variant_ids,
         &counts_by_product_variant_ids,
     )
     .await?;
-    let internal_order_items = zip_to_internal_order_items(
+    Ok((
+        counts_by_product_variant_ids,
         order_item_input_by_product_variant_ids,
         product_variants_by_product_variant_ids,
         product_variant_versions_by_product_variant_ids,
         tax_rate_versions_by_product_variant_ids,
-        counts_by_product_variant_ids,
         discounts_by_product_variant_ids,
-        current_timestamp,
-    );
-    Ok(internal_order_items)
+    ))
 }
 
 /// Zips HashMaps which contain the required attributes for construction to order items.
@@ -613,7 +646,7 @@ async fn query_discounts_by_product_variant_ids(
     let client = reqwest::Client::new();
 
     let res = client
-        .post("http://localhost:3500/v1.0/invoke/shoppingcart/method/")
+        .post("http://localhost:3500/v1.0/invoke/discount/method/graphql")
         .json(&request_body)
         .send()
         .await?;
