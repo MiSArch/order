@@ -52,7 +52,7 @@ impl Mutation {
         #[graphql(desc = "CreateOrderInput")] input: CreateOrderInput,
     ) -> Result<Order> {
         authenticate_user(&ctx, input.user_id)?;
-        let db_client = ctx.data_unchecked::<Database>();
+        let db_client = ctx.data::<Database>()?;
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         validate_order_input(db_client, &input).await?;
         let current_timestamp = DateTime::now();
@@ -90,7 +90,7 @@ impl Mutation {
         ctx: &Context<'a>,
         #[graphql(desc = "Uuid of order to place")] id: Uuid,
     ) -> Result<Order> {
-        let db_client = ctx.data_unchecked::<Database>();
+        let db_client = ctx.data::<Database>()?;
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         let order = query_order(&collection, id).await?;
         authenticate_user(&ctx, order.user._id)?;
@@ -246,9 +246,10 @@ async fn create_internal_order_items<'a>(
     input: &CreateOrderInput,
     current_timestamp: DateTime,
 ) -> Result<Vec<OrderItem>> {
-    let db_client = ctx.data_unchecked::<Database>();
+    let db_client = ctx.data::<Database>()?;
+    let authorized_header = ctx.data::<AuthorizedUserHeader>()?;
     let (counts_by_product_variant_ids, order_item_input_by_product_variant_ids) =
-        query_counts_by_product_variant_ids(&input).await?;
+        query_counts_by_product_variant_ids(authorized_header, &input).await?;
     let product_variant_ids: Vec<Uuid> = counts_by_product_variant_ids.keys().cloned().collect();
     let product_variants_by_product_variant_ids: HashMap<Uuid, ProductVariant> =
         query_product_variants_by_product_variant_ids(db_client, &product_variant_ids).await?;
@@ -432,8 +433,8 @@ type UUID = Uuid;
 struct GetShoppingCartProductVariantIdsAndCounts;
 
 /// Queries product variants from shopping cart item ids from shopping cart service.
-async fn query_counts_by_product_variant_ids<'a>(
-    ctx: &Context<'a>,
+async fn query_counts_by_product_variant_ids(
+    authorized_user_header: &AuthorizedUserHeader,
     input: &CreateOrderInput,
 ) -> Result<(HashMap<Uuid, u64>, HashMap<Uuid, OrderItemInput>)> {
     let representations = vec![input.user_id.to_string()];
@@ -442,12 +443,11 @@ async fn query_counts_by_product_variant_ids<'a>(
     let request_body = GetShoppingCartProductVariantIdsAndCounts::build_query(variables);
     let client = reqwest::Client::new();
 
-    let authorized_header = ctx.data::<AuthorizedUserHeader>()?;
-    let authorized_header_string = serde_json::to_string(authorized_header)?;
+    let authorized_user_header_string = serde_json::to_string(authorized_user_header)?;
     let res = client
         .post("http://localhost:3500/v1.0/invoke/shoppingcart/method/")
         .json(&request_body)
-        .header("Authorized-User", authorized_header_string)
+        .header("Authorized-User", authorized_user_header_string)
         .send()
         .await?;
     let response_body: Response<get_shopping_cart_product_variant_ids_and_counts::ResponseData> =

@@ -38,7 +38,7 @@ impl User {
         >,
     ) -> Result<OrderConnection> {
         authenticate_user(&ctx, self._id)?;
-        let db_client = ctx.data_unchecked::<Database>();
+        let db_client = ctx.data::<Database>()?;
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         let order_order = order_by.unwrap_or_default();
         let sorting_doc = doc! {order_order.field.unwrap_or_default().as_str(): i32::from(order_order.direction.unwrap_or_default())};

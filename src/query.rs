@@ -20,7 +20,7 @@ impl Query {
         ctx: &Context<'a>,
         #[graphql(desc = "UUID of user to retrieve.")] id: Uuid,
     ) -> Result<User> {
-        let db_client = ctx.data_unchecked::<Database>();
+        let db_client = ctx.data::<Database>()?;
         let collection: Collection<User> = db_client.collection::<User>("users");
         query_object(&collection, id).await
     }
@@ -31,7 +31,7 @@ impl Query {
         ctx: &Context<'a>,
         #[graphql(desc = "UUID of order to retrieve.")] id: Uuid,
     ) -> Result<Order> {
-        let db_client = ctx.data_unchecked::<Database>();
+        let db_client = ctx.data::<Database>()?;
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         let order = query_object(&collection, id).await?;
         authenticate_user(&ctx, order.user._id)?;
@@ -45,7 +45,7 @@ impl Query {
         ctx: &Context<'a>,
         #[graphql(key, desc = "UUID of order to retrieve.")] id: Uuid,
     ) -> Result<Order> {
-        let db_client = ctx.data_unchecked::<Database>();
+        let db_client = ctx.data::<Database>()?;
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         let order = query_object(&collection, id).await?;
         Ok(order)
@@ -57,7 +57,7 @@ impl Query {
         ctx: &Context<'a>,
         #[graphql(desc = "UUID of order_item to retrieve.")] id: Uuid,
     ) -> Result<OrderItem> {
-        let db_client = ctx.data_unchecked::<Database>();
+        let db_client = ctx.data::<Database>()?;
         let order_collection: Collection<Order> = db_client.collection::<Order>("orders");
         let order_item_collection: Collection<OrderItem> =
             db_client.collection::<OrderItem>("order_items");
@@ -74,7 +74,7 @@ impl Query {
         ctx: &Context<'a>,
         #[graphql(key, desc = "UUID of order_item to retrieve.")] id: Uuid,
     ) -> Result<OrderItem> {
-        let db_client = ctx.data_unchecked::<Database>();
+        let db_client = ctx.data::<Database>()?;
         let collection: Collection<OrderItem> = db_client.collection::<OrderItem>("order_items");
         let order_item = query_object(&collection, id).await?;
         Ok(order_item)
