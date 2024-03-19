@@ -1,10 +1,10 @@
 use async_graphql::{Context, Error, Result};
 use axum::http::HeaderMap;
 use bson::Uuid;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 // Authorized-User HTTP header.
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct AuthorizedUserHeader {
     id: Uuid,
     roles: Vec<Role>,
@@ -32,7 +32,7 @@ impl TryFrom<&HeaderMap> for AuthorizedUserHeader {
 }
 
 // Role of user.
-#[derive(Deserialize, Debug, PartialEq, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 enum Role {
     Buyer,
