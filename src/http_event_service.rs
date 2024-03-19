@@ -8,6 +8,7 @@ use crate::{
     foreign_types::{Coupon, ProductVariant, ProductVariantVersion, ShipmentMethod, TaxRate},
     order::Order,
     order_compensation::{compensate_order, OrderCompensation},
+    query::query_object,
     user::User,
 };
 
@@ -119,7 +120,6 @@ pub struct UpdateProductVariantEventData {
 #[derive(Clone)]
 pub struct HttpEventServiceState {
     pub product_variant_collection: Collection<ProductVariant>,
-    pub product_variant_version_collection: Collection<ProductVariantVersion>,
     pub coupon_collection: Collection<Coupon>,
     pub tax_rate_collection: Collection<TaxRate>,
     pub shipment_method_collection: Collection<ShipmentMethod>,
@@ -203,18 +203,11 @@ pub async fn on_product_variant_version_creation_event(
     Json(event): Json<Event<ProductVariantVersionEventData>>,
 ) -> Result<Json<TopicEventResponse>, StatusCode> {
     info!("{:?}", event);
-
-    let product_variant = ProductVariant::from(event.data);
     match event.topic.as_str() {
         "catalog/product-variant-version/created" => {
             create_or_update_product_variant_in_mongodb(
                 &state.product_variant_collection,
-                product_variant,
-            )
-            .await?;
-            create_product_variant_version_in_mongodb(
-                &state.product_variant_version_collection,
-                product_variant.current_version,
+                event.data,
             )
             .await?;
         }
@@ -225,7 +218,7 @@ pub async fn on_product_variant_version_creation_event(
 
 /// HTTP endpoint to receive product variant update events.
 #[debug_handler(state = HttpEventServiceState)]
-pub async fn on_product_variant_updated(
+pub async fn on_product_variant_update_event(
     State(state): State<HttpEventServiceState>,
     Json(event): Json<Event<UpdateProductVariantEventData>>,
 ) -> Result<Json<TopicEventResponse>, StatusCode> {
@@ -233,7 +226,11 @@ pub async fn on_product_variant_updated(
 
     match event.topic.as_str() {
         "catalog/product-variant/updated" => {
-            update_product_variant_visibility_in_mongodb(&state.user_collection, event.data).await?
+            update_product_variant_visibility_in_mongodb(
+                &state.product_variant_collection,
+                event.data,
+            )
+            .await?
         }
         _ => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
@@ -313,31 +310,58 @@ pub async fn on_shipment_creation_failed_event(
     Ok(Json(TopicEventResponse::default()))
 }
 
-/// Create a newly created ProductVariantVersion in MongoDB.
-pub async fn create_product_variant_version_in_mongodb(
-    collection: &Collection<ProductVariantVersion>,
-    product_variant_version: ProductVariantVersion,
+/// Create or update ProductVariant in MongoDB.
+pub async fn create_or_update_product_variant_in_mongodb(
+    collection: &Collection<ProductVariant>,
+    product_variant_version_event_data: ProductVariantVersionEventData,
 ) -> Result<(), StatusCode> {
-    match collection.insert_one(product_variant_version, None).await {
+    match query_object(
+        collection,
+        product_variant_version_event_data.product_variant_id,
+    )
+    .await
+    {
+        Ok(product_variant) => {
+            update_product_variant_in_mongodb(
+                product_variant_version_event_data,
+                collection,
+                product_variant,
+            )
+            .await
+        }
+        Err(_) => {
+            create_product_variant_in_mongodb(product_variant_version_event_data, collection).await
+        }
+    }
+}
+
+/// Update ProductVariant in MongoDB.
+async fn update_product_variant_in_mongodb(
+    product_variant_version_event_data: ProductVariantVersionEventData,
+    collection: &Collection<ProductVariant>,
+    product_variant: ProductVariant,
+) -> Result<(), StatusCode> {
+    let product_variant_version = ProductVariantVersion::from(product_variant_version_event_data);
+    match collection
+        .update_one(
+            doc! {"product_variant._id": product_variant._id },
+            doc! {"$set": {"product_variant.current_version": product_variant_version}},
+            None,
+        )
+        .await
+    {
         Ok(_) => Ok(()),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
 
-/// Create or update ProductVariant in MongoDB.
-pub async fn create_or_update_product_variant_in_mongodb(
+/// Create ProductVariant in MongoDB.
+async fn create_product_variant_in_mongodb(
+    product_variant_version_event_data: ProductVariantVersionEventData,
     collection: &Collection<ProductVariant>,
-    product_variant: ProductVariant,
 ) -> Result<(), StatusCode> {
-    let update_options = UpdateOptions::builder().upsert(true).build();
-    match collection
-        .update_one(
-            doc! {"product_variant._id": product_variant._id },
-            doc! {"$set": {"product_variant": product_variant}},
-            update_options,
-        )
-        .await
-    {
+    let product_variant = ProductVariant::from(product_variant_version_event_data);
+    match collection.insert_one(product_variant, None).await {
         Ok(_) => Ok(()),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
@@ -365,12 +389,12 @@ pub async fn create_or_update_tax_rate_in_mongodb(
 /// Inserts user Address in MongoDB.
 pub async fn insert_user_address_in_mongodb(
     collection: &Collection<User>,
-    user_address: UserAddressEventData,
+    user_address_event_data: UserAddressEventData,
 ) -> Result<(), StatusCode> {
     match collection
         .update_one(
-            doc! {"_id": user_address.user_id },
-            doc! {"$push": {"user_address_ids": user_address.id }},
+            doc! {"_id": user_address_event_data.user_id },
+            doc! {"$push": {"user_address_ids": user_address_event_data.id }},
             None,
         )
         .await
@@ -383,12 +407,12 @@ pub async fn insert_user_address_in_mongodb(
 /// Remove user Address in MongoDB.
 pub async fn remove_user_address_in_mongodb(
     collection: &Collection<User>,
-    user_address: UserAddressEventData,
+    user_address_event_data: UserAddressEventData,
 ) -> Result<(), StatusCode> {
     match collection
         .update_one(
-            doc! {"_id": user_address.user_id },
-            doc! {"$pull": {"user_address_ids": user_address.id }},
+            doc! {"_id": user_address_event_data.user_id },
+            doc! {"$pull": {"user_address_ids": user_address_event_data.id }},
             None,
         )
         .await
@@ -398,11 +422,14 @@ pub async fn remove_user_address_in_mongodb(
     }
 }
 
-async fn update_product_variant_visibility_in_mongodb(collection: &Collection<ProductVariant>, data: UpdateProductVariantEventData) -> _ {
+async fn update_product_variant_visibility_in_mongodb(
+    collection: &Collection<ProductVariant>,
+    update_product_variant_event_data: UpdateProductVariantEventData,
+) -> Result<(), StatusCode> {
     match collection
         .update_one(
-            doc! {"_id": data.id },
-            doc! {"$set": {"user_address_ids": user_address.id }},
+            doc! {"_id": update_product_variant_event_data.id },
+            doc! {"$set": {"is_publicly_visible": update_product_variant_event_data.is_publicly_visible }},
             None,
         )
         .await

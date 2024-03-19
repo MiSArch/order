@@ -525,14 +525,23 @@ fn build_order_item_inputs_by_product_variant_ids(
         .collect()
 }
 
-// Obtains product variants from product variant ids.
+/// Obtains product variants from product variant ids.
+///
+/// Filters product variants which are non-publicly-visible.
 async fn query_product_variants_by_product_variant_ids(
     db_client: &Database,
     product_variant_ids: &Vec<Uuid>,
 ) -> Result<HashMap<Uuid, ProductVariant>> {
     let collection: Collection<ProductVariant> =
         db_client.collection::<ProductVariant>("product_variants");
-    query_objects(&collection, product_variant_ids).await
+    let product_variants_by_product_variant_ids_unfiltered =
+        query_objects(&collection, product_variant_ids).await?;
+    let product_variants_by_product_variant_ids =
+        product_variants_by_product_variant_ids_unfiltered
+            .into_iter()
+            .filter(|(_, p)| p.is_publicly_visible)
+            .collect();
+    Ok(product_variants_by_product_variant_ids)
 }
 
 /// Obtains current product variant versions using product variants.

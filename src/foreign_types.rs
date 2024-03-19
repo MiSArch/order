@@ -14,6 +14,8 @@ pub struct ProductVariant {
     pub _id: Uuid,
     /// Current version of product variant.
     pub current_version: ProductVariantVersion,
+    /// Defines visibility of product variant.
+    pub is_publicly_visible: bool,
 }
 
 impl From<ProductVariantVersionEventData> for ProductVariant {
@@ -21,6 +23,7 @@ impl From<ProductVariantVersionEventData> for ProductVariant {
         Self {
             _id: value.product_variant_id,
             current_version: ProductVariantVersion::from(value),
+            is_publicly_visible: true,
         }
     }
 }

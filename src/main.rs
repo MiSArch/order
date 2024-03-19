@@ -33,16 +33,17 @@ use query::Query;
 mod mutation;
 use mutation::Mutation;
 
-use foreign_types::{Coupon, ProductVariant, ProductVariantVersion, ShipmentMethod, TaxRate};
+use foreign_types::{Coupon, ProductVariant, ShipmentMethod, TaxRate};
 
 mod user;
 use user::User;
 
 mod http_event_service;
 use http_event_service::{
-    list_topic_subscriptions, on_id_creation_event, on_product_variant_version_creation_event,
-    on_shipment_creation_failed_event, on_tax_rate_version_creation_event,
-    on_user_address_archived_event, on_user_address_creation_event, HttpEventServiceState,
+    list_topic_subscriptions, on_id_creation_event, on_product_variant_update_event,
+    on_product_variant_version_creation_event, on_shipment_creation_failed_event,
+    on_tax_rate_version_creation_event, on_user_address_archived_event,
+    on_user_address_creation_event, HttpEventServiceState,
 };
 
 mod authentication;
@@ -87,8 +88,6 @@ async fn db_connection() -> Client {
 async fn build_dapr_router(db_client: Database) -> Router {
     let product_variant_collection: mongodb::Collection<ProductVariant> =
         db_client.collection::<ProductVariant>("product_variants");
-    let product_variant_version_collection: mongodb::Collection<ProductVariantVersion> =
-        db_client.collection::<ProductVariantVersion>("product_variant_versions");
     let coupon_collection: mongodb::Collection<Coupon> = db_client.collection::<Coupon>("coupons");
     let tax_rate_collection: mongodb::Collection<TaxRate> =
         db_client.collection::<TaxRate>("tax_rates");
@@ -108,6 +107,10 @@ async fn build_dapr_router(db_client: Database) -> Router {
             post(on_product_variant_version_creation_event),
         )
         .route(
+            "/on-product-variant-update-event",
+            post(on_product_variant_update_event),
+        )
+        .route(
             "/on-tax-rate-version-creation-event",
             post(on_tax_rate_version_creation_event),
         )
@@ -125,7 +128,6 @@ async fn build_dapr_router(db_client: Database) -> Router {
         )
         .with_state(HttpEventServiceState {
             product_variant_collection,
-            product_variant_version_collection,
             coupon_collection,
             tax_rate_collection,
             shipment_method_collection,
