@@ -51,6 +51,7 @@ pub struct UuidEventData {
 ///
 /// Differs from ProductVariantVersion in the `id` field naming.
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct ProductVariantVersionEventData {
     /// UUID of product variant version.
     pub id: Uuid,
@@ -63,6 +64,7 @@ pub struct ProductVariantVersionEventData {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct TaxRateVersionEventData {
     /// UUID of the tax rate version.
     pub id: Uuid,
@@ -75,6 +77,7 @@ pub struct TaxRateVersionEventData {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct UserAddressEventData {
     /// UUID of the user address.
     pub id: Uuid,
@@ -83,6 +86,7 @@ pub struct UserAddressEventData {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct ShipmentFailedEventData {
     /// UUID of the order of shipment.
     pub order_id: Uuid,
@@ -91,6 +95,7 @@ pub struct ShipmentFailedEventData {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct ShipmentStatusUpdatedEventData {
     /// UUID of the order of shipment.
     pub order_id: Uuid,
@@ -109,6 +114,7 @@ pub enum ShipmentStatus {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateProductVariantEventData {
     /// UUID of the product variant to update.
     pub id: Uuid,
