@@ -904,9 +904,9 @@ async fn validate_user_address(
     id: Uuid,
     user_id: Uuid,
 ) -> Result<()> {
-    match collection.find_one(doc! {"_id": id }, None).await {
+    match collection.find_one(doc! {"_id": user_id }, None).await {
         Ok(maybe_object) => match maybe_object {
-            Some(object) => Ok(object),
+            Some(object) => Ok(()),
             None => {
                 let message = format!(
                     "Address with UUID: `{}` of user with UUID: `{}` not found.",
@@ -923,7 +923,6 @@ async fn validate_user_address(
             Err(Error::new(message))
         }
     }
-    .map(|_| ())
 }
 
 /// Checks if a single object is in the system (MongoDB database populated with events).
