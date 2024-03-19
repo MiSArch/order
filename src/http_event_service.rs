@@ -56,7 +56,7 @@ pub struct ProductVariantVersionEventData {
     /// UUID of product variant version.
     pub id: Uuid,
     /// Price of product variant version.
-    pub price: u64,
+    pub retail_price: u64,
     /// UUID of tax rate associated with order item.
     pub tax_rate_id: Uuid,
     /// UUID of product variant associated with product variant version.

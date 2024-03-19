@@ -62,7 +62,7 @@ impl From<ProductVariantVersionEventData> for ProductVariantVersion {
     fn from(value: ProductVariantVersionEventData) -> Self {
         Self {
             _id: value.id,
-            price: value.price,
+            price: value.retail_price,
             tax_rate_id: value.tax_rate_id,
         }
     }
