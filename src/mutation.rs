@@ -663,14 +663,11 @@ fn build_discounts_from_response_data(
     response_data: get_discounts::ResponseData,
     product_variant_ids: &Vec<Uuid>,
 ) -> Result<HashMap<Uuid, BTreeSet<Discount>>> {
-    let discounts_for_product_variants_response_data: Vec<
-        get_discounts::GetDiscountsFindApplicableDiscounts,
-    > = response_data.find_applicable_discounts;
     let graphql_client_lib_discounts: HashMap<
         Uuid,
         get_discounts::GetDiscountsFindApplicableDiscounts,
     > = remap_discounts_to_product_variants(
-        discounts_for_product_variants_response_data,
+        response_data.find_applicable_discounts,
         &product_variant_ids,
     )?;
     let simple_object_discounts = convert_graphql_client_lib_discounts_to_simple_object_discounts(
