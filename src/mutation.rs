@@ -364,7 +364,7 @@ type _Any = String;
 
 #[derive(GraphQLQuery)]
 #[graphql(
-    schema_path = "schemas_repo/inventory.graphql",
+    schema_path = "schemas_repo/unfederated-inventory.gql",
     query_path = "queries/get_unreserved_product_item_counts.graphql",
     response_derives = "Debug"
 )]
@@ -427,6 +427,7 @@ fn build_stock_counts_by_product_variant_from_response_data(
                         )
                     )
                 }
+                get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities::ProductItem => todo!(),
             };
             stock_counts_by_product_variant
         }).collect()
@@ -441,8 +442,8 @@ fn calculate_availability_of_product_variant_ids(
     expected_stock_counts_by_product_variant_ids: &HashMap<Uuid, u64>,
 ) -> Result<()> {
     let availabilites: Vec<bool> = expected_stock_counts_by_product_variant_ids.iter().map(|(id, expected_count )| {
-        let message = format!("Stock count for product variant of UUID: `{}` is not present in `stock_counts_by_product_variant_ids`.", id);
-        let count = stock_counts_by_product_variant_ids.get(id).ok_or(Error::new(message))?;
+        let error = build_hash_map_error(expected_stock_counts_by_product_variant_ids, *id);
+        let count = stock_counts_by_product_variant_ids.get(id).ok_or(error)?;
         Ok(*count >= *expected_count)
     }).collect::<Result<Vec<bool>>>()?;
     match availabilites.into_iter().all(|b| b == true) {
@@ -533,9 +534,8 @@ fn build_counts_by_product_variant_ids(
         .map(|e| {
             let id_and_count_ref = ids_and_counts.get(&e.shopping_cart_item_id);
             let id_and_count = id_and_count_ref.and_then(|(id, count)| Some((*id, *count)));
-            id_and_count.ok_or(Error::new(
-                "Shopping cart does not contain shopping cart item specified in order.",
-            ))
+            let error = build_hash_map_error(ids_and_counts, e.shopping_cart_item_id);
+            id_and_count.ok_or(error)
         })
         .collect()
 }
@@ -551,9 +551,8 @@ fn build_order_item_inputs_by_product_variant_ids(
         .map(|e| {
             let id_and_count_ref = ids_and_counts.get(&e.shopping_cart_item_id);
             let id_and_count = id_and_count_ref.and_then(|(id, _)| Some((*id, e.clone())));
-            id_and_count.ok_or(Error::new(
-                "Shopping cart does not contain shopping cart item specified in order.",
-            ))
+            let error = build_hash_map_error(ids_and_counts, e.shopping_cart_item_id);
+            id_and_count.ok_or(error)
         })
         .collect()
 }
@@ -602,8 +601,8 @@ async fn query_tax_rate_versions_by_product_variant_ids(
     let tax_rates = query_objects(&collection, &tax_rate_ids).await?;
     let tax_rate_versions_by_product_variant_ids = product_variant_versions_by_product_variant_ids.iter()
         .map(|(id, p)| {
-            let message = format!("Stock count for product variant of UUID: `{}` is not present in `product_variant_versions_by_product_variant_ids`.", id);
-            let tax_rate = tax_rates.get(&p.tax_rate_id).ok_or(Error::new(message))?;
+            let error = build_hash_map_error(&tax_rates, *id);
+            let tax_rate = tax_rates.get(&p.tax_rate_id).ok_or(error)?;
             Ok((*id, tax_rate.current_version))
         })
         .collect::<Result<HashMap<Uuid, TaxRateVersion>>>()?;
@@ -722,10 +721,12 @@ fn build_find_applicable_discounts_product_variant_input(
     > = product_variant_ids
         .iter()
         .map(|id| {
-            let count = counts_by_product_variant_ids.get(id).unwrap();
+            let counts_error = build_hash_map_error(counts_by_product_variant_ids, *id);
+            let count = counts_by_product_variant_ids.get(id).ok_or(counts_error)?;
+            let order_item_error = build_hash_map_error(order_item_input_by_product_variant_ids, *id);
             let coupon_ids = order_item_input_by_product_variant_ids
                 .get(id)
-                .unwrap()
+                .ok_or(order_item_error)?
                 .coupon_ids
                 .iter()
                 .cloned()
@@ -974,4 +975,9 @@ where
             Err(Error::new(message))
         }
     }
+}
+
+fn build_hash_map_error<V>(hash_map: &HashMap<Uuid, V>, id: Uuid) -> Error {
+    let message = format!("`{}` for product variant of UUID: `{}` is not present in `{}`. ", type_name::<V>(), id, type_name::<HashMap<Uuid, V>>());
+    Error::new(message)
 }
