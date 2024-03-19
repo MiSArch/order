@@ -360,7 +360,6 @@ fn zip_to_internal_order_items(
 }
 
 // Defines a custom scalar from GraphQL schema.
-// TODO: Check if this works somehow. This is hacky and i do not know which type this should be in a strongly typed language like Rust.
 type _Any = Representation;
 
 #[derive(GraphQLQuery)]
@@ -386,7 +385,7 @@ async fn check_product_variant_availability(
         .iter()
         .cloned()
         .map(|id| Representation {
-            __typename: "User".to_string(),
+            __typename: "ProductVariant".to_string(),
             id: id.to_string(),
         })
         .collect();
