@@ -34,12 +34,6 @@ impl PartialOrd for ProductVariant {
     }
 }
 
-impl From<ProductVariant> for Bson {
-    fn from(value: ProductVariant) -> Self {
-        Bson::Document(doc!("_id": value._id))
-    }
-}
-
 impl From<ProductVariant> for Uuid {
     fn from(value: ProductVariant) -> Self {
         value._id
@@ -53,7 +47,7 @@ pub struct ProductVariantVersion {
     /// UUID of the product variant version.
     pub _id: Uuid,
     /// Price of the product variant version.
-    pub price: u64,
+    pub price: u32,
     /// UUID of tax rate associated with order item.
     pub tax_rate_id: Uuid,
 }
@@ -76,7 +70,7 @@ impl PartialOrd for ProductVariantVersion {
 
 impl From<ProductVariantVersion> for Bson {
     fn from(value: ProductVariantVersion) -> Self {
-        Bson::Document(doc!("_id": value._id))
+        Bson::Document(doc!{"_id": value._id, "price": value.price, "tax_rate_id": value.tax_rate_id})
     }
 }
 

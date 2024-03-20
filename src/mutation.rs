@@ -655,7 +655,7 @@ async fn query_discounts_by_product_variant_ids(
             product_variant_ids,
             counts_by_product_variant_ids,
         )?;
-    let order_amount = calculate_order_amount(&product_variant_versions_by_product_variant_ids)?;
+    let order_amount = calculate_order_amount(&product_variant_versions_by_product_variant_ids);
     let find_applicable_discounts_input = build_find_applicable_discounts_input(
         user_id,
         find_applicable_discounts_product_variant_input,
@@ -830,12 +830,12 @@ fn convert_graphql_client_lib_discounts_to_simple_object_discounts(
 /// Converts value to an `i64` as this is what the GraphQL client library expects.
 fn calculate_order_amount(
     pproduct_variant_versions_by_product_variant_ids: &HashMap<Uuid, ProductVariantVersion>,
-) -> Result<i64, TryFromIntError> {
-    let order_amount: u64 = pproduct_variant_versions_by_product_variant_ids
+) -> i64 {
+    let order_amount: u32 = pproduct_variant_versions_by_product_variant_ids
         .iter()
         .map(|(_, p)| p.price)
         .sum();
-    i64::try_from(order_amount)
+    i64::from(order_amount)
 }
 
 #[derive(GraphQLQuery)]

@@ -56,7 +56,7 @@ pub struct ProductVariantVersionEventData {
     /// UUID of product variant version.
     pub id: Uuid,
     /// Price of product variant version.
-    pub retail_price: u64,
+    pub retail_price: u32,
     /// UUID of tax rate associated with order item.
     pub tax_rate_id: Uuid,
     /// UUID of product variant associated with product variant version.
@@ -335,7 +335,8 @@ pub async fn create_or_update_product_variant_in_mongodb(
             )
             .await
         }
-        Err(_) => {
+        Err(e) => {
+            log::info!("Error {:?}", e);
             create_product_variant_in_mongodb(product_variant_version_event_data, collection).await
         }
     }
@@ -348,6 +349,7 @@ async fn update_product_variant_in_mongodb(
     product_variant: ProductVariant,
 ) -> Result<(), StatusCode> {
     let product_variant_version = ProductVariantVersion::from(product_variant_version_event_data);
+    log::info!("{:?}", product_variant_version);
     match collection
         .update_one(
             doc! {"_id": product_variant._id},
