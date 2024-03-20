@@ -350,7 +350,7 @@ async fn update_product_variant_in_mongodb(
     let product_variant_version = ProductVariantVersion::from(product_variant_version_event_data);
     match collection
         .update_one(
-            doc! {"_id": product_variant._id },
+            doc! {"_id": product_variant._id},
             doc! {"$set": {"current_version": product_variant_version}},
             None,
         )
