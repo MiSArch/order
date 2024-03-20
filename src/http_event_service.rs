@@ -381,8 +381,8 @@ pub async fn create_or_update_tax_rate_in_mongodb(
     let update_options = UpdateOptions::builder().upsert(true).build();
     match collection
         .update_one(
-            doc! {"tax_rate._id": tax_rate._id },
-            doc! {"$set": {"tax_rate": tax_rate}},
+            doc! {"_id": tax_rate._id },
+            doc! {"$set": {"_id": tax_rate._id, "current_version": tax_rate.current_version}},
             update_options,
         )
         .await
