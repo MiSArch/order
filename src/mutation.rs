@@ -1002,7 +1002,9 @@ where
     }
 }
 
-/// Constructs error message that describes a failted retrieval of an item `V` by product variant id.
+/// Returns an error of a HashMap retrieval.
+/// 
+/// Constructs error message that describes a failed retrieval of an item `V` by product variant id.
 fn build_hash_map_error<V>(_hash_map: &HashMap<Uuid, V>, id: Uuid) -> Error {
     let message = format!(
         "`{}` for product variant of UUID: `{}` is not present in `{}`. ",
