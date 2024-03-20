@@ -251,21 +251,21 @@ async fn create_internal_order_items<'a>(
     let authorized_header = ctx.data::<AuthorizedUserHeader>()?;
     let (
         counts_by_product_variant_ids,
-        order_item_input_by_product_variant_ids,
+        order_item_inputs_by_product_variant_ids,
         product_variants_by_product_variant_ids,
         product_variant_versions_by_product_variant_ids,
         tax_rate_versions_by_product_variant_ids,
         discounts_by_product_variant_ids,
     ) = query_or_obtain_order_item_attributes(authorized_header, input, db_client).await?;
     let internal_order_items = zip_to_internal_order_items(
-        order_item_input_by_product_variant_ids,
+        order_item_inputs_by_product_variant_ids,
         product_variants_by_product_variant_ids,
         product_variant_versions_by_product_variant_ids,
         tax_rate_versions_by_product_variant_ids,
         counts_by_product_variant_ids,
         discounts_by_product_variant_ids,
         current_timestamp,
-    );
+    )?;
     Ok(internal_order_items)
 }
 
@@ -285,7 +285,7 @@ async fn query_or_obtain_order_item_attributes(
     ),
     Error,
 > {
-    let (counts_by_product_variant_ids, order_item_input_by_product_variant_ids) =
+    let (counts_by_product_variant_ids, order_item_inputs_by_product_variant_ids) =
         query_counts_by_product_variant_ids(authorized_header, &input).await?;
     let product_variant_ids: Vec<Uuid> = counts_by_product_variant_ids.keys().cloned().collect();
     let product_variants_by_product_variant_ids: HashMap<Uuid, ProductVariant> =
@@ -304,21 +304,21 @@ async fn query_or_obtain_order_item_attributes(
     .await?;
     let discounts_by_product_variant_ids = query_discounts_by_product_variant_ids(
         input.user_id,
-        &order_item_input_by_product_variant_ids,
+        &order_item_inputs_by_product_variant_ids,
         &product_variant_ids,
         &product_variant_versions_by_product_variant_ids,
         &counts_by_product_variant_ids,
     )
     .await?;
     let _shipment_fees = query_shipment_fees(
-        &order_item_input_by_product_variant_ids,
+        &order_item_inputs_by_product_variant_ids,
         &product_variant_versions_by_product_variant_ids,
         &counts_by_product_variant_ids,
     )
     .await?;
     Ok((
         counts_by_product_variant_ids,
-        order_item_input_by_product_variant_ids,
+        order_item_inputs_by_product_variant_ids,
         product_variants_by_product_variant_ids,
         product_variant_versions_by_product_variant_ids,
         tax_rate_versions_by_product_variant_ids,
@@ -328,25 +328,30 @@ async fn query_or_obtain_order_item_attributes(
 
 /// Zips HashMaps which contain the required attributes for construction to order items.
 fn zip_to_internal_order_items(
-    order_item_input_by_product_variant_ids: HashMap<Uuid, OrderItemInput>,
+    order_item_inputs_by_product_variant_ids: HashMap<Uuid, OrderItemInput>,
     product_variants_by_product_variant_ids: HashMap<Uuid, ProductVariant>,
     product_variant_versions_by_product_variant_ids: HashMap<Uuid, ProductVariantVersion>,
     tax_rate_versions_by_product_variant_ids: HashMap<Uuid, TaxRateVersion>,
     counts_by_product_variant_ids: HashMap<Uuid, u64>,
     discounts_by_product_variant_ids: HashMap<Uuid, BTreeSet<Discount>>,
     current_timestamp: DateTime,
-) -> Vec<OrderItem> {
+) -> Result<Vec<OrderItem>> {
     product_variants_by_product_variant_ids
         .iter()
         .map(|(id, product_variant)| {
-            let order_item_input = order_item_input_by_product_variant_ids.get(id).unwrap();
+            let order_item_input_error = build_hash_map_error(&order_item_inputs_by_product_variant_ids, *id);
+            let product_variant_version_error = build_hash_map_error(&product_variant_versions_by_product_variant_ids, *id);
+            let tax_rate_version_error = build_hash_map_error(&tax_rate_versions_by_product_variant_ids, *id);
+            let count_error = build_hash_map_error(&counts_by_product_variant_ids, *id);
+            let discount_error = build_hash_map_error(&discounts_by_product_variant_ids, *id);
+            let order_item_input = order_item_inputs_by_product_variant_ids.get(id).ok_or(order_item_input_error)?;
             let product_variant_version = product_variant_versions_by_product_variant_ids
                 .get(id)
-                .unwrap();
-            let tax_rate_version = tax_rate_versions_by_product_variant_ids.get(id).unwrap();
-            let count = counts_by_product_variant_ids.get(id).unwrap();
-            let internal_discounts = discounts_by_product_variant_ids.get(id).unwrap();
-            OrderItem::new(
+                .ok_or(product_variant_version_error)?;
+            let tax_rate_version = tax_rate_versions_by_product_variant_ids.get(id).ok_or(tax_rate_version_error)?;
+            let count = counts_by_product_variant_ids.get(id).ok_or(count_error)?;
+            let internal_discounts = discounts_by_product_variant_ids.get(id).ok_or(discount_error)?;
+            let order_item = OrderItem::new(
                 order_item_input,
                 product_variant,
                 product_variant_version,
@@ -354,9 +359,10 @@ fn zip_to_internal_order_items(
                 *count,
                 internal_discounts,
                 current_timestamp,
-            )
+            );
+            Ok(order_item)
         })
-        .collect()
+        .collect::<Result<Vec<OrderItem>>>()
 }
 
 // Defines a custom scalar from GraphQL schema.
@@ -636,14 +642,14 @@ pub struct GetDiscounts;
 /// Queries discounts for coupons from discount service.
 async fn query_discounts_by_product_variant_ids(
     user_id: Uuid,
-    order_item_input_by_product_variant_ids: &HashMap<Uuid, OrderItemInput>,
+    order_item_inputs_by_product_variant_ids: &HashMap<Uuid, OrderItemInput>,
     product_variant_ids: &Vec<Uuid>,
     product_variant_versions_by_product_variant_ids: &HashMap<Uuid, ProductVariantVersion>,
     counts_by_product_variant_ids: &HashMap<Uuid, u64>,
 ) -> Result<HashMap<Uuid, BTreeSet<Discount>>> {
     let find_applicable_discounts_product_variant_input =
         build_find_applicable_discounts_product_variant_input(
-            order_item_input_by_product_variant_ids,
+            order_item_inputs_by_product_variant_ids,
             product_variant_ids,
             counts_by_product_variant_ids,
         )?;
@@ -727,7 +733,7 @@ fn build_find_applicable_discounts_input(
 ///
 /// Describes product variant ids, the count of items planned to order and the coupons, which should be applied.
 fn build_find_applicable_discounts_product_variant_input(
-    order_item_input_by_product_variant_ids: &HashMap<Uuid, OrderItemInput>,
+    order_item_inputs_by_product_variant_ids: &HashMap<Uuid, OrderItemInput>,
     product_variant_ids: &Vec<Uuid>,
     counts_by_product_variant_ids: &HashMap<Uuid, u64>,
 ) -> Result<Vec<get_discounts::FindApplicableDiscountsProductVariantInput>> {
@@ -739,8 +745,8 @@ fn build_find_applicable_discounts_product_variant_input(
             let counts_error = build_hash_map_error(counts_by_product_variant_ids, *id);
             let count = counts_by_product_variant_ids.get(id).ok_or(counts_error)?;
             let order_item_error =
-                build_hash_map_error(order_item_input_by_product_variant_ids, *id);
-            let coupon_ids = order_item_input_by_product_variant_ids
+                build_hash_map_error(order_item_inputs_by_product_variant_ids, *id);
+            let coupon_ids = order_item_inputs_by_product_variant_ids
                 .get(id)
                 .ok_or(order_item_error)?
                 .coupon_ids
@@ -880,10 +886,12 @@ fn build_calculate_shipment_fees_input(
         product_variant_versions_by_product_variant_ids
             .iter()
             .map(|(id, product_variant_version)| {
-                let count = counts_by_product_variant_ids.get(id).unwrap();
+                let count_error = build_hash_map_error(counts_by_product_variant_ids, *id);
+                let count = counts_by_product_variant_ids.get(id).ok_or(count_error)?;
+                let order_item_input_error = build_hash_map_error(order_item_inputs_by_product_variant_ids, *id);
                 let shipment_method_id: Uuid = order_item_inputs_by_product_variant_ids
                     .get(id)
-                    .unwrap()
+                    .ok_or(order_item_input_error)?
                     .shipment_method_id;
                 let product_variant_version_with_quantity_and_shipment_method_input =
                     get_shipment_fees::ProductVariantVersionWithQuantityAndShipmentMethodInput {
