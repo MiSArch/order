@@ -117,7 +117,7 @@ async fn send_order_compensation_event(order_compensation: OrderCompensation) ->
     let client = reqwest::Client::new();
     let order_compensation_dto = OrderCompensationDTO::from(order_compensation);
     client
-        .post("http://localhost:3500/v1.0/publish/order/order_compensation/created")
+        .post("http://localhost:3500/v1.0/publish/pubsub/order/order-compensation/created")
         .json(&order_compensation_dto)
         .send()
         .await?;
