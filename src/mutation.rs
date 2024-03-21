@@ -865,7 +865,7 @@ async fn query_shipment_fees(
     let client = reqwest::Client::new();
 
     let res = client
-        .post("http://localhost:3500/v1.0/invoke/shoppingcart/method/")
+        .post("http://localhost:3500/v1.0/invoke/shipment/method/graphql")
         .json(&request_body)
         .send()
         .await?;
@@ -914,7 +914,7 @@ async fn send_order_created_event(order: Order) -> Result<()> {
     let client = reqwest::Client::new();
     let order_dto = OrderDTO::from(order);
     client
-        .post("http://localhost:3500/v1.0/publish/order/order/created")
+        .post("http://localhost:3500/v1.0/publish/pubsub/order/order/created")
         .json(&order_dto)
         .send()
         .await?;
