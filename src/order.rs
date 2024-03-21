@@ -129,6 +129,7 @@ fn sort_order_items(order_items: &mut Vec<OrderItem>, order_by: Option<CommonOrd
 
 /// DTO of an order of a user.
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OrderDTO {
     /// Order UUID.
     pub id: Uuid,

@@ -159,6 +159,7 @@ fn calculate_compensatable_amount(
 /// `product_item` is set to None as long as `OrderStatus::Pending`.
 /// Must contain a ProductItem when `OrderStatus::Placed` or `OrderStatus::Rejected`.
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OrderItemDTO {
     /// OrderItem UUID.
     pub id: Uuid,
