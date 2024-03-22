@@ -92,11 +92,12 @@ impl Mutation {
     ) -> Result<Order> {
         let db_client = ctx.data::<Database>()?;
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
-        let order = query_order(&collection, id).await?;
+        let mut order = query_order(&collection, id).await?;
         authenticate_user(&ctx, order.user._id)?;
         set_status_placed(&collection, id).await?;
-        send_order_created_event(order).await?;
-        query_order(&collection, id).await
+        order = query_order(&collection, id).await?;
+        send_order_created_event(order.clone()).await?;
+        Ok(order)
     }
 }
 
