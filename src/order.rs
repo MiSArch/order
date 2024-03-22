@@ -76,6 +76,7 @@ impl Order {
 
 /// Describes if Order is placed, or yet pending. An Order can be rejected during its lifetime.
 #[derive(Debug, Enum, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum OrderStatus {
     Pending,
     Placed,
@@ -100,6 +101,7 @@ impl From<OrderStatus> for Bson {
 
 /// Describes the reason why an Order was rejected, in case of rejection: `OrderStatus::Rejected`.
 #[derive(Debug, Enum, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RejectionReason {
     InvalidOrderData,
     InventoryReservationFailed,
