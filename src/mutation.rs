@@ -923,7 +923,7 @@ fn build_calculate_shipment_fees_input(
 /// Sends an `order/order/created` created event containing the order context.
 async fn send_order_created_event(order: Order) -> Result<()> {
     let client = reqwest::Client::new();
-    let order_dto = OrderDTO::from(order);
+    let order_dto = OrderDTO::try_from(order)?;
     client
         .post("http://localhost:3500/v1.0/publish/pubsub/order/order/created")
         .json(&order_dto)

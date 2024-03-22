@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use async_graphql::{ComplexObject, Enum, Result, SimpleObject};
+use async_graphql::{ComplexObject, Enum, Error, Result, SimpleObject};
 use bson::Uuid;
 use bson::{datetime::DateTime, Bson};
 use serde::{Deserialize, Serialize};
@@ -136,11 +136,11 @@ pub struct OrderDTO {
     /// UUID of user connected with Order.
     pub user_id: Uuid,
     /// Timestamp when Order was created.
-    pub created_at: DateTime,
+    pub created_at: chrono::DateTime<chrono::Utc>,
     /// The status of the Order.
     pub order_status: OrderStatus,
     /// Timestamp of Order placement. `None` until Order is placed.
-    pub placed_at: Option<DateTime>,
+    pub placed_at: chrono::DateTime<chrono::Utc>,
     /// The rejection reason if status of the Order is `OrderStatus::Rejected`.
     pub rejection_reason: Option<RejectionReason>,
     /// OrderItems associated with the order.
@@ -155,25 +155,31 @@ pub struct OrderDTO {
     pub payment_information_id: Uuid,
 }
 
-impl From<Order> for OrderDTO {
-    fn from(value: Order) -> Self {
+impl TryFrom<Order> for OrderDTO {
+    type Error = Error;
+
+    fn try_from(value: Order) -> Result<Self, Self::Error> {
         let order_item_dtos = value
             .internal_order_items
             .iter()
             .map(|o| OrderItemDTO::from(o.clone()))
             .collect();
-        Self {
+        let message =
+            format!("OrderDTO cannot be created, `placed_at` of the given Order is `None`");
+        let placed_at = value.placed_at.ok_or(Error::new(message))?.to_chrono();
+        let order_dto = Self {
             id: value._id,
             user_id: value.user._id,
-            created_at: value.created_at,
+            created_at: value.created_at.to_chrono(),
             order_status: value.order_status,
-            placed_at: value.placed_at,
+            placed_at,
             rejection_reason: value.rejection_reason,
             order_items: order_item_dtos,
             shipment_address_id: value.shipment_address._id,
             invoice_address_id: value.invoice_address._id,
             compensatable_order_amount: value.compensatable_order_amount,
             payment_information_id: value.payment_information_id,
-        }
+        };
+        Ok(order_dto)
     }
 }
