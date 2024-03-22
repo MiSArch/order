@@ -133,8 +133,16 @@ async fn set_status_placed(collection: &Collection<Order>, id: Uuid) -> Result<(
     let order = query_object(&collection, id).await?;
     let order_created_at_system_time = order.created_at.to_system_time();
     if order_created_at_system_time + PENDING_TIMEOUT >= current_timestamp_system_time {
-        let current_timestamp = DateTime::from(current_timestamp_system_time);
-        set_status_placed_in_mongodb(&collection, id, current_timestamp).await
+        match order.order_status {
+            OrderStatus::Pending => {
+                let current_timestamp = DateTime::from(current_timestamp_system_time);
+                set_status_placed_in_mongodb(&collection, id, current_timestamp).await
+            },
+            _ => {
+                let message = format!("`{:?}` must be `OrderStatus::Pending` to be able to be placed. Order was already placed or rejected.", order.order_status);
+                Err(Error::new(message))
+            }
+        }
     } else {
         set_status_rejected_in_mongodb(&collection, id).await
     }
