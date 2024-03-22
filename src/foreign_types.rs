@@ -70,7 +70,9 @@ impl PartialOrd for ProductVariantVersion {
 
 impl From<ProductVariantVersion> for Bson {
     fn from(value: ProductVariantVersion) -> Self {
-        Bson::Document(doc!{"_id": value._id, "price": value.price, "tax_rate_id": value.tax_rate_id})
+        Bson::Document(
+            doc! {"_id": value._id, "price": value.price, "tax_rate_id": value.tax_rate_id},
+        )
     }
 }
 

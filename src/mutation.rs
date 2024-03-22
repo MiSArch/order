@@ -338,18 +338,27 @@ fn zip_to_internal_order_items(
     product_variants_by_product_variant_ids
         .iter()
         .map(|(id, product_variant)| {
-            let order_item_input_error = build_hash_map_error(&order_item_inputs_by_product_variant_ids, *id);
-            let product_variant_version_error = build_hash_map_error(&product_variant_versions_by_product_variant_ids, *id);
-            let tax_rate_version_error = build_hash_map_error(&tax_rate_versions_by_product_variant_ids, *id);
+            let order_item_input_error =
+                build_hash_map_error(&order_item_inputs_by_product_variant_ids, *id);
+            let product_variant_version_error =
+                build_hash_map_error(&product_variant_versions_by_product_variant_ids, *id);
+            let tax_rate_version_error =
+                build_hash_map_error(&tax_rate_versions_by_product_variant_ids, *id);
             let count_error = build_hash_map_error(&counts_by_product_variant_ids, *id);
             let discount_error = build_hash_map_error(&discounts_by_product_variant_ids, *id);
-            let order_item_input = order_item_inputs_by_product_variant_ids.get(id).ok_or(order_item_input_error)?;
+            let order_item_input = order_item_inputs_by_product_variant_ids
+                .get(id)
+                .ok_or(order_item_input_error)?;
             let product_variant_version = product_variant_versions_by_product_variant_ids
                 .get(id)
                 .ok_or(product_variant_version_error)?;
-            let tax_rate_version = tax_rate_versions_by_product_variant_ids.get(id).ok_or(tax_rate_version_error)?;
+            let tax_rate_version = tax_rate_versions_by_product_variant_ids
+                .get(id)
+                .ok_or(tax_rate_version_error)?;
             let count = counts_by_product_variant_ids.get(id).ok_or(count_error)?;
-            let internal_discounts = discounts_by_product_variant_ids.get(id).ok_or(discount_error)?;
+            let internal_discounts = discounts_by_product_variant_ids
+                .get(id)
+                .ok_or(discount_error)?;
             let order_item = OrderItem::new(
                 order_item_input,
                 product_variant,
@@ -489,9 +498,9 @@ async fn query_counts_by_product_variant_ids(
     authorized_user_header: &AuthorizedUserHeader,
     input: &CreateOrderInput,
 ) -> Result<(HashMap<Uuid, u64>, HashMap<Uuid, OrderItemInput>)> {
-    let representations = vec![Representation{
+    let representations = vec![Representation {
         __typename: "User".to_string(),
-        id: input.user_id.to_string()
+        id: input.user_id.to_string(),
     }];
     let variables = get_shopping_cart_product_variant_ids_and_counts::Variables { representations };
 
@@ -889,7 +898,8 @@ fn build_calculate_shipment_fees_input(
             .map(|(id, product_variant_version)| {
                 let count_error = build_hash_map_error(counts_by_product_variant_ids, *id);
                 let count = counts_by_product_variant_ids.get(id).ok_or(count_error)?;
-                let order_item_input_error = build_hash_map_error(order_item_inputs_by_product_variant_ids, *id);
+                let order_item_input_error =
+                    build_hash_map_error(order_item_inputs_by_product_variant_ids, *id);
                 let shipment_method_id: Uuid = order_item_inputs_by_product_variant_ids
                     .get(id)
                     .ok_or(order_item_input_error)?
@@ -1002,7 +1012,7 @@ where
 }
 
 /// Returns an error of a HashMap retrieval.
-/// 
+///
 /// Constructs error message that describes a failed retrieval of an item `V` by product variant id.
 fn build_hash_map_error<V>(_hash_map: &HashMap<Uuid, V>, id: Uuid) -> Error {
     let message = format!(
