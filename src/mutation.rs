@@ -137,7 +137,7 @@ async fn set_status_placed(collection: &Collection<Order>, id: Uuid) -> Result<(
             OrderStatus::Pending => {
                 let current_timestamp = DateTime::from(current_timestamp_system_time);
                 set_status_placed_in_mongodb(&collection, id, current_timestamp).await
-            },
+            }
             _ => {
                 let message = format!("`{:?}` must be `OrderStatus::Pending` to be able to be placed. Order was already placed or rejected.", order.order_status);
                 Err(Error::new(message))

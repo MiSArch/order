@@ -164,7 +164,7 @@ pub struct OrderItemDTO {
     /// OrderItem UUID.
     pub id: Uuid,
     /// Timestamp when OrderItem was created.
-    pub created_at: DateTime,
+    pub created_at: chrono::DateTime<chrono::Utc>,
     /// UUID of product variant associated with OrderItem.
     pub product_variant_id: Uuid,
     /// UUID of product variant version associated with OrderItem.
@@ -188,7 +188,7 @@ impl From<OrderItem> for OrderItemDTO {
         let discount_ids = value.internal_discounts.iter().map(|d| d._id).collect();
         Self {
             id: value._id,
-            created_at: value.created_at,
+            created_at: value.created_at.to_chrono(),
             product_variant_id: value.product_variant._id,
             product_variant_version_id: value.product_variant_version._id,
             tax_rate_version_id: value.tax_rate_version._id,
