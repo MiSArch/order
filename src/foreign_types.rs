@@ -8,7 +8,7 @@ use crate::mutation::get_discounts;
 
 /// Foreign type of a product variant.
 #[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
-#[graphql(unresolvable)]
+#[graphql(unresolvable = "id")]
 pub struct ProductVariant {
     /// UUID of the product variant.
     pub _id: Uuid,
@@ -42,7 +42,7 @@ impl From<ProductVariant> for Uuid {
 
 /// Foreign type of a product variant.
 #[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
-#[graphql(unresolvable)]
+#[graphql(unresolvable = "id")]
 pub struct ProductVariantVersion {
     /// UUID of the product variant version.
     pub _id: Uuid,
@@ -142,7 +142,7 @@ impl From<Uuid> for Coupon {
 
 /// Foreign type of a tax rate.
 #[derive(Debug, Serialize, Deserialize, Copy, Clone, SimpleObject)]
-#[graphql(unresolvable)]
+#[graphql(unresolvable = "id")]
 pub struct TaxRate {
     /// UUID of the tax rate.
     pub _id: Uuid,
@@ -174,7 +174,7 @@ impl From<TaxRate> for Uuid {
 
 /// Foreign type of a tax rate version.
 #[derive(Debug, Serialize, Deserialize, Copy, Clone, SimpleObject)]
-#[graphql(unresolvable)]
+#[graphql(unresolvable = "id")]
 pub struct TaxRateVersion {
     /// UUID of the tax rate.
     pub _id: Uuid,
@@ -210,7 +210,7 @@ impl Eq for TaxRateVersion {}
 
 /// Foreign type of a discount.
 #[derive(Debug, Serialize, Deserialize, Copy, Clone, SimpleObject)]
-#[graphql(unresolvable)]
+#[graphql(unresolvable = "id")]
 pub struct Discount {
     /// UUID of the discount.
     pub _id: Uuid,
@@ -267,35 +267,35 @@ pub struct ShoppingCartItem {
     pub _id: Uuid,
 }
 
-/// Foreign type of an address.
+/// Foreign type of an user address.
 #[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
 #[graphql(unresolvable)]
-pub struct Address {
+pub struct UserAddress {
     /// UUID of the product item.
     pub _id: Uuid,
 }
 
-impl PartialOrd for Address {
+impl PartialOrd for UserAddress {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self._id.partial_cmp(&other._id)
     }
 }
 
-impl From<Address> for Bson {
-    fn from(value: Address) -> Self {
+impl From<UserAddress> for Bson {
+    fn from(value: UserAddress) -> Self {
         Bson::Document(doc!("_id": value._id))
     }
 }
 
-impl From<Address> for Uuid {
-    fn from(value: Address) -> Self {
+impl From<UserAddress> for Uuid {
+    fn from(value: UserAddress) -> Self {
         value._id
     }
 }
 
-impl From<Uuid> for Address {
+impl From<Uuid> for UserAddress {
     fn from(value: Uuid) -> Self {
-        Address { _id: value }
+        UserAddress { _id: value }
     }
 }
 

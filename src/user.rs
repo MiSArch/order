@@ -19,6 +19,7 @@ pub struct User {
     /// UUID of the user.
     pub _id: Uuid,
     /// UUIDs of the users addresses.
+    #[graphql(skip)]
     pub user_address_ids: Vec<Uuid>,
 }
 

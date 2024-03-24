@@ -18,7 +18,6 @@ use std::time::SystemTime;
 
 use crate::authentication::authenticate_user;
 use crate::authentication::AuthorizedUserHeader;
-use crate::foreign_types::Address;
 use crate::foreign_types::Coupon;
 use crate::foreign_types::Discount;
 use crate::foreign_types::ProductVariant;
@@ -26,6 +25,7 @@ use crate::foreign_types::ProductVariantVersion;
 use crate::foreign_types::ShipmentMethod;
 use crate::foreign_types::TaxRate;
 use crate::foreign_types::TaxRateVersion;
+use crate::foreign_types::UserAddress;
 use crate::mutation_input_structs::CreateOrderInput;
 use crate::mutation_input_structs::OrderItemInput;
 use crate::order::OrderDTO;
@@ -58,8 +58,8 @@ impl Mutation {
         let current_timestamp = DateTime::now();
         let internal_order_items: Vec<OrderItem> =
             create_internal_order_items(&ctx, &input, current_timestamp).await?;
-        let shipment_address = Address::from(input.shipment_address_id);
-        let invoice_address = Address::from(input.invoice_address_id);
+        let shipment_address = UserAddress::from(input.shipment_address_id);
+        let invoice_address = UserAddress::from(input.invoice_address_id);
         let compensatable_order_amount =
             calculate_compensatable_order_amount(&internal_order_items);
         let order = Order {
@@ -953,7 +953,7 @@ async fn validate_user_address(
             Some(_) => Ok(()),
             None => {
                 let message = format!(
-                    "Address with UUID: `{}` of user with UUID: `{}` not found.",
+                    "User address with UUID: `{}` of user with UUID: `{}` not found.",
                     id, user_id
                 );
                 Err(Error::new(message))
@@ -961,7 +961,7 @@ async fn validate_user_address(
         },
         Err(_) => {
             let message = format!(
-                "Address with UUID: `{}` of user with UUID: `{}` not found.",
+                "User address with UUID: `{}` of user with UUID: `{}` not found.",
                 id, user_id
             );
             Err(Error::new(message))

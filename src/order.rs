@@ -5,7 +5,7 @@ use bson::Uuid;
 use bson::{datetime::DateTime, Bson};
 use serde::{Deserialize, Serialize};
 
-use crate::foreign_types::Address;
+use crate::foreign_types::UserAddress;
 use crate::order_datatypes::OrderDirection;
 use crate::order_item::OrderItemDTO;
 use crate::{
@@ -33,9 +33,9 @@ pub struct Order {
     #[graphql(skip)]
     pub internal_order_items: Vec<OrderItem>,
     /// Address to where the order should be shipped to.
-    pub shipment_address: Address,
+    pub shipment_address: UserAddress,
     /// Address of invoice.
-    pub invoice_address: Address,
+    pub invoice_address: UserAddress,
     /// Total compensatable amount of order.
     pub compensatable_order_amount: u64,
     /// UUID of payment information that the order should be processed with.
