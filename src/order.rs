@@ -33,6 +33,7 @@ pub struct Order {
     #[graphql(skip)]
     pub internal_order_items: Vec<OrderItem>,
     /// Address to where the order should be shipped to.
+    #[graphql(skip)]
     pub shipment_address: UserAddress,
     /// Address of invoice.
     pub invoice_address: UserAddress,
