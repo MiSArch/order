@@ -24,3 +24,7 @@ jobs:
         run: |
           sudo apt install -y protobuf-compiler
           cargo run -- --generate-schema
+      - uses: misarch/graphql-schema-transform@v1
+        with:
+          schema: schemas/order.graphql
+          target: schemas/order.graphql
