@@ -387,7 +387,7 @@ type _Any = Representation;
 
 #[derive(GraphQLQuery)]
 #[graphql(
-    schema_path = "schemas_repo/unfederated-inventory.gql",
+    schema_path = "schemas_repo/inventory.gql",
     query_path = "queries/get_unreserved_product_item_counts.graphql",
     response_derives = "Debug"
 )]
