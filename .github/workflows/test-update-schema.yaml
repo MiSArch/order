@@ -22,7 +22,6 @@ jobs:
           path: "schemas"
       - name: Save graphql schemas
         run: |
-          sudo apt install -y protobuf-compiler
           cargo run -- --generate-schema
       - uses: misarch/graphql-schema-transform@v1
         with:
