@@ -1,0 +1,3 @@
+query GetShipmentFees($calculateShipmentFeesInput: CalculateShipmentFeesInput!) {
+    calculateShipmentFees(input: $calculateShipmentFeesInput)
+}

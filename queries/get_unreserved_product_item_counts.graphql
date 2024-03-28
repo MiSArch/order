@@ -1,0 +1,11 @@
+query GetUnreservedProductItemCounts($representations: [_Any!]!) {
+    _entities(representations: $representations) {
+        __typename
+        ... on ProductVariant {
+            id,
+            productItems(filter: { inventoryStatus: IN_STORAGE }) {
+                totalCount
+            }
+        }
+    }
+}

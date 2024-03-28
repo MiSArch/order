@@ -1,0 +1,36 @@
+services:
+  order:
+    extends:
+      file: docker-compose-base.yaml
+      service: order
+    build:
+      context: .
+      dockerfile: dev-dockerfile
+    ports:
+      - 8080:8080
+  order-db:
+    extends:
+      file: docker-compose-base.yaml
+      service: order-db
+  order-mongoexpress:
+    image: mongo-express
+    ports:
+      - 8081:8081
+    depends_on:
+      - order-db
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://order-db:27017
+  order-dapr:
+    extends:
+      file: docker-compose-base.yaml
+      service: order-dapr
+    volumes:
+      - "./.dapr/dapr-config-minimal.yaml:/config.yaml"
+      - "./.dapr/components:/components"
+  placement:
+    image: "daprio/dapr"
+    command: ["./placement", "-port", "50006"]
+    ports:
+      - 50006:50006
+volumes:
+  order-db-data:
