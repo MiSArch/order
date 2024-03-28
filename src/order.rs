@@ -79,8 +79,11 @@ impl Order {
 #[derive(Debug, Enum, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum OrderStatus {
+    /// Order is saved a a template, this status can only last for max. 1 hour.
     Pending,
+    /// Order is placed, which means SAGA for payment, fullfill and other validity checks need to be triggered.
     Placed,
+    /// Something went wrong with the order and it was compensated in all relevant serivces.
     Rejected,
 }
 
@@ -104,7 +107,9 @@ impl From<OrderStatus> for Bson {
 #[derive(Debug, Enum, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RejectionReason {
+    /// The order was rejected due to its invalid content.
     InvalidOrderData,
+    /// The inventory service was not able to reserve inventory items according to the order.
     InventoryReservationFailed,
 }
 

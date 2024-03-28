@@ -13,8 +13,10 @@ pub struct ProductVariant {
     /// UUID of the product variant.
     pub _id: Uuid,
     /// Current version of product variant.
+    #[graphql(skip)]
     pub current_version: ProductVariantVersion,
     /// Defines visibility of product variant.
+    #[graphql(skip)]
     pub is_publicly_visible: bool,
 }
 
@@ -47,8 +49,10 @@ pub struct ProductVariantVersion {
     /// UUID of the product variant version.
     pub _id: Uuid,
     /// Price of the product variant version.
+    #[graphql(skip)]
     pub price: u32,
     /// UUID of tax rate associated with order item.
+    #[graphql(skip)]
     pub tax_rate_id: Uuid,
 }
 
@@ -147,6 +151,7 @@ pub struct TaxRate {
     /// UUID of the tax rate.
     pub _id: Uuid,
     /// Current version of tax rate.
+    #[graphql(skip)]
     pub current_version: TaxRateVersion,
 }
 
@@ -215,6 +220,7 @@ pub struct Discount {
     /// UUID of the discount.
     pub _id: Uuid,
     /// Amount to be discounted.
+    #[graphql(skip)]
     pub discount: f64,
 }
 
