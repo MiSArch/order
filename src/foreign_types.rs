@@ -184,8 +184,10 @@ pub struct TaxRateVersion {
     /// UUID of the tax rate.
     pub _id: Uuid,
     /// Rate of the tax rate version.
+    #[graphql(skip)]
     pub rate: f64,
     /// Version number of product variant version.
+    #[graphql(skip)]
     pub version: u32,
 }
 
