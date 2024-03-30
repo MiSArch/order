@@ -106,6 +106,7 @@ pub struct ShipmentStatusUpdatedEventData {
 }
 
 #[derive(Deserialize, Debug)]
+/// Shipment status of order.
 pub enum ShipmentStatus {
     Pending,
     InProgress,
@@ -141,6 +142,11 @@ pub async fn list_topic_subscriptions() -> Result<Json<Vec<Pubsub>>, StatusCode>
         topic: "catalog/product-variant-version/created".to_string(),
         route: "/on-product-variant-version-creation-event".to_string(),
     };
+    let pubsub_product_variant_updated = Pubsub {
+        pubsubname: "pubsub".to_string(),
+        topic: "catalog/product-variant/updated".to_string(),
+        route: "/on-product-variant-updated-event".to_string(),
+    };
     let pubsub_coupon = Pubsub {
         pubsubname: "pubsub".to_string(),
         topic: "discount/coupon/created".to_string(),
@@ -166,13 +172,20 @@ pub async fn list_topic_subscriptions() -> Result<Json<Vec<Pubsub>>, StatusCode>
         topic: "address/user-address/created".to_string(),
         route: "/on-user-address-creation-event".to_string(),
     };
+    let pubsub_user_address_archived = Pubsub {
+        pubsubname: "pubsub".to_string(),
+        topic: "address/user-address/archived".to_string(),
+        route: "/on-user-address-archived-event".to_string(),
+    };
     Ok(Json(vec![
+        pubsub_product_variant_updated,
         pubsub_product_variant_version,
         pubsub_coupon,
         pubsub_tax_rate_version,
         pubsub_shipment_method,
         pubsub_user,
         pubsub_user_address,
+        pubsub_user_address_archived,
     ]))
 }
 

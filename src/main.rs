@@ -107,7 +107,7 @@ async fn build_dapr_router(db_client: Database) -> Router {
             post(on_product_variant_version_creation_event),
         )
         .route(
-            "/on-product-variant-update-event",
+            "/on-product-variant-updated-event",
             post(on_product_variant_update_event),
         )
         .route(
