@@ -446,13 +446,11 @@ fn build_stock_counts_by_product_variant_from_response_data(
         .entities
         .into_iter()
         .map(|maybe_product_variant_enum| {
-            let message = format!("Response data of `check_product_variant_availability` query could not be parsed, `{:?}` is `None`", maybe_product_variant_enum);
+            let message = format!("Response data of `check_product_variant_availability` query could not be parsed, `maybe_product_variant_enum` is `None`");
             let product_variant_enum = maybe_product_variant_enum.ok_or(Error::new(message))?;
             let stock_counts_by_product_variant: Result<(Uuid, u64)> = match product_variant_enum {
                 get_unreserved_product_item_counts::GetUnreservedProductItemCountsEntities::ProductVariant(product_variant) => {
-                    let message = format!("Response data of `check_product_variant_availability` query could not be parsed, `{:?}` is `None`", product_variant.product_items);
-                    let product_items = product_variant.product_items.ok_or(Error::new(message))?;
-                    let stock_count = u64::try_from(product_items.total_count)?;
+                    let stock_count = u64::try_from(product_variant.inventory_count)?;
                     Ok(
                         (
                             product_variant.id,

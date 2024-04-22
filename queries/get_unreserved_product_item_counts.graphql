@@ -3,9 +3,7 @@ query GetUnreservedProductItemCounts($representations: [_Any!]!) {
         __typename
         ... on ProductVariant {
             id,
-            productItems(filter: { inventoryStatus: IN_STORAGE }) {
-                totalCount
-            }
+            inventoryCount,
         }
     }
 }
