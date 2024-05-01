@@ -32,7 +32,7 @@ services:
         "--app-id",
         "order",
         "--app-port",
-        "8080",
+        "${EXPERIMENT_CONFIG_SIDECAR_PORT:-8080}",
         "--app-protocol",
         "http",
         "--dapr-http-port",
