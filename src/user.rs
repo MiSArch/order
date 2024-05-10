@@ -5,7 +5,7 @@ use mongodb_cursor_pagination::{error::CursorError, FindResult, PaginatedCursor}
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    authentication::authenticate_user,
+    authorization::authorize_user,
     base_connection::{BaseConnection, FindResultWrapper},
     order::Order,
     order_connection::OrderConnection,
@@ -38,7 +38,7 @@ impl User {
             OrderOrderInput,
         >,
     ) -> Result<OrderConnection> {
-        authenticate_user(&ctx, self._id)?;
+        authorize_user(&ctx, Some(self._id))?;
         let db_client = ctx.data::<Database>()?;
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         let order_order = order_by.unwrap_or_default();

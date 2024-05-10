@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::foreign_types::UserAddress;
 use crate::order_datatypes::OrderDirection;
 use crate::order_item::OrderItemDTO;
+use crate::payment_authorization::PaymentAuthorization;
 use crate::{
     order_datatypes::CommonOrderInput, order_item::OrderItem,
     order_item_connection::OrderItemConnection, user::User,
@@ -41,6 +42,12 @@ pub struct Order {
     pub compensatable_order_amount: u64,
     /// UUID of payment information that the order should be processed with.
     pub payment_information_id: Uuid,
+    /// VAT number.
+    pub vat_number: String,
+    /// Optional payment authorization information.
+    /// This field is not queriable with GraphQL.
+    #[graphql(skip)]
+    pub payment_authorization: Option<PaymentAuthorization>,
 }
 
 #[ComplexObject]
@@ -161,6 +168,8 @@ pub struct OrderDTO {
     pub compensatable_order_amount: u64,
     /// UUID of payment information that the order should be processed with.
     pub payment_information_id: Uuid,
+    /// Optional payment authorization information.
+    pub payment_authorization: Option<PaymentAuthorization>,
 }
 
 impl TryFrom<Order> for OrderDTO {
@@ -187,6 +196,7 @@ impl TryFrom<Order> for OrderDTO {
             invoice_address_id: value.invoice_address._id,
             compensatable_order_amount: value.compensatable_order_amount,
             payment_information_id: value.payment_information_id,
+            payment_authorization: value.payment_authorization,
         };
         Ok(order_dto)
     }

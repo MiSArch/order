@@ -1,6 +1,6 @@
 use std::{any::type_name, collections::HashMap};
 
-use crate::{authentication::authenticate_user, order_item::OrderItem, user::User, Order};
+use crate::{authorization::authorize_user, order_item::OrderItem, user::User, Order};
 use async_graphql::{Context, Error, Object, Result};
 
 use bson::Uuid;
@@ -34,7 +34,7 @@ impl Query {
         let db_client = ctx.data::<Database>()?;
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         let order = query_object(&collection, id).await?;
-        authenticate_user(&ctx, order.user._id)?;
+        authorize_user(&ctx, Some(order.user._id))?;
         Ok(order)
     }
 
@@ -63,7 +63,7 @@ impl Query {
             db_client.collection::<OrderItem>("order_items");
         let order_item = query_object(&order_item_collection, id).await?;
         let user = query_user_from_order_item_id(&order_collection, id).await?;
-        authenticate_user(&ctx, user._id)?;
+        authorize_user(&ctx, Some(user._id))?;
         Ok(order_item)
     }
 

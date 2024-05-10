@@ -16,8 +16,8 @@ use std::collections::HashMap;
 use std::time::Duration;
 use std::time::SystemTime;
 
-use crate::authentication::authenticate_user;
-use crate::authentication::AuthorizedUserHeader;
+use crate::authorization::authorize_user;
+use crate::authorization::AuthorizedUserHeader;
 use crate::foreign_types::Coupon;
 use crate::foreign_types::Discount;
 use crate::foreign_types::ProductVariant;
@@ -31,6 +31,7 @@ use crate::mutation_input_structs::OrderItemInput;
 use crate::order::OrderDTO;
 use crate::order::OrderStatus;
 use crate::order_item::OrderItem;
+use crate::payment_authorization::PaymentAuthorization;
 use crate::query::query_object;
 use crate::query::query_objects;
 use crate::user::User;
@@ -51,7 +52,7 @@ impl Mutation {
         ctx: &Context<'a>,
         #[graphql(desc = "CreateOrderInput")] input: CreateOrderInput,
     ) -> Result<Order> {
-        authenticate_user(&ctx, input.user_id)?;
+        authorize_user(&ctx, Some(input.user_id))?;
         let db_client = ctx.data::<Database>()?;
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         validate_order_input(db_client, &input).await?;
@@ -62,6 +63,7 @@ impl Mutation {
         let invoice_address = UserAddress::from(input.invoice_address_id);
         let compensatable_order_amount =
             calculate_compensatable_order_amount(&internal_order_items);
+        let payment_authorization = build_payment_authorization(&input);
         let order = Order {
             _id: Uuid::new(),
             user: User::from(input.user_id),
@@ -74,14 +76,10 @@ impl Mutation {
             invoice_address,
             compensatable_order_amount,
             payment_information_id: input.payment_information_id,
+            vat_number: input.vat_number,
+            payment_authorization,
         };
-        match collection.insert_one(order, None).await {
-            Ok(result) => {
-                let id = uuid_from_bson(result.inserted_id)?;
-                query_order(&collection, id).await
-            }
-            Err(_) => Err(Error::new("Adding order failed in MongoDB.")),
-        }
+        insert_order_in_mongodb(&collection, order).await
     }
 
     /// Places an existing order by changing its status to `OrderStatus::Placed`.
@@ -93,7 +91,7 @@ impl Mutation {
         let db_client = ctx.data::<Database>()?;
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         let mut order = query_order(&collection, id).await?;
-        authenticate_user(&ctx, order.user._id)?;
+        authorize_user(&ctx, Some(order.user._id))?;
         set_status_placed(&collection, id).await?;
         order = query_order(&collection, id).await?;
         send_order_created_event(order.clone()).await?;
@@ -101,6 +99,31 @@ impl Mutation {
     }
 }
 
+/// Builds payment authorization from create order input.
+///
+/// `create_order_input` - The create order input to build the payment authorization from.
+fn build_payment_authorization(input: &CreateOrderInput) -> Option<PaymentAuthorization> {
+    input
+        .payment_authorization
+        .clone()
+        .and_then(|definitely_payment_authorization| {
+            Option::<PaymentAuthorization>::from(definitely_payment_authorization)
+        })
+}
+
+/// Inserts order in MongoDB and returns the order itself.
+///
+/// * `collection` - MongoDB collection to insert order in.
+/// * `order` - Order to insert.
+async fn insert_order_in_mongodb(collection: &Collection<Order>, order: Order) -> Result<Order> {
+    match collection.insert_one(order, None).await {
+        Ok(result) => {
+            let id = uuid_from_bson(result.inserted_id)?;
+            query_order(&collection, id).await
+        }
+        Err(_) => Err(Error::new("Adding order failed in MongoDB.")),
+    }
+}
 /// Calculates the total compensatable amount of all order items in the input by summing up their `compensatable_amount` attributes.
 fn calculate_compensatable_order_amount(order_items: &Vec<OrderItem>) -> u64 {
     order_items.iter().map(|o| o.compensatable_amount).sum()

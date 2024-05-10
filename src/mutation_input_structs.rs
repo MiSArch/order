@@ -1,11 +1,11 @@
-use async_graphql::{InputObject, SimpleObject};
+use async_graphql::InputObject;
 use bson::Uuid;
 use std::{
     cmp::Ordering,
     collections::{BTreeSet, HashSet},
 };
 
-#[derive(SimpleObject, InputObject)]
+#[derive(InputObject)]
 pub struct CreateOrderInput {
     /// UUID of user owning the order.
     pub user_id: Uuid,
@@ -17,9 +17,13 @@ pub struct CreateOrderInput {
     pub invoice_address_id: Uuid,
     /// UUID of payment information that the order should be processed with.
     pub payment_information_id: Uuid,
+    /// VAT number.
+    pub vat_number: String,
+    /// Optional payment authorization data.
+    pub payment_authorization: Option<PaymentAuthorizationInput>,
 }
 
-#[derive(SimpleObject, InputObject, PartialEq, Eq, Clone)]
+#[derive(InputObject, PartialEq, Eq, Clone)]
 pub struct OrderItemInput {
     /// UUID of shopping cart item associated with order item.
     pub shopping_cart_item_id: Uuid,
@@ -27,6 +31,11 @@ pub struct OrderItemInput {
     pub shipment_method_id: Uuid,
     /// UUIDs of coupons to use with order item.
     pub coupon_ids: HashSet<Uuid>,
+}
+
+#[derive(Debug, InputObject, Clone)]
+pub struct PaymentAuthorizationInput {
+    pub cvc: Option<u16>,
 }
 
 impl PartialOrd for OrderItemInput {
