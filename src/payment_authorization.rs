@@ -4,7 +4,7 @@ use crate::mutation_input_structs::PaymentAuthorizationInput;
 
 /// Payment authorization data that can be attached to order.
 ///
-/// This datatype can be extended for different payment authorization.
+/// This datatype can be extended with different payment authorization formats.
 /// The conversion implementation needs to be adapted accordingly.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub enum PaymentAuthorization {
