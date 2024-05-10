@@ -7,6 +7,7 @@ use crate::mutation_input_structs::PaymentAuthorizationInput;
 /// This datatype can be extended with different payment authorization formats.
 /// The conversion implementation needs to be adapted accordingly.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
 pub enum PaymentAuthorization {
     /// CVC/CVV number of 3-4 digits.
     CVC(u16),
