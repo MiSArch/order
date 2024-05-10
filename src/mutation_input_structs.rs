@@ -35,6 +35,7 @@ pub struct OrderItemInput {
 
 #[derive(Debug, InputObject, Clone)]
 pub struct PaymentAuthorizationInput {
+    /// CVC/CVV number of 3-4 digits.
     pub cvc: Option<u16>,
 }
 
