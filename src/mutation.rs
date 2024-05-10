@@ -76,8 +76,8 @@ impl Mutation {
             invoice_address,
             compensatable_order_amount,
             payment_information_id: input.payment_information_id,
-            vat_number: input.vat_number,
             payment_authorization,
+            vat_number: input.vat_number,
         };
         insert_order_in_mongodb(&collection, order).await
     }

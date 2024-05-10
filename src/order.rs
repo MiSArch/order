@@ -42,12 +42,13 @@ pub struct Order {
     pub compensatable_order_amount: u64,
     /// UUID of payment information that the order should be processed with.
     pub payment_information_id: Uuid,
-    /// VAT number.
-    pub vat_number: String,
     /// Optional payment authorization information.
     /// This field is not queriable with GraphQL.
     #[graphql(skip)]
     pub payment_authorization: Option<PaymentAuthorization>,
+    /// VAT number.
+    #[graphql(skip)]
+    pub vat_number: String,
 }
 
 #[ComplexObject]
@@ -170,6 +171,8 @@ pub struct OrderDTO {
     pub payment_information_id: Uuid,
     /// Optional payment authorization information.
     pub payment_authorization: Option<PaymentAuthorization>,
+    /// VAT number.
+    pub vat_number: String,
 }
 
 impl TryFrom<Order> for OrderDTO {
@@ -197,6 +200,7 @@ impl TryFrom<Order> for OrderDTO {
             compensatable_order_amount: value.compensatable_order_amount,
             payment_information_id: value.payment_information_id,
             payment_authorization: value.payment_authorization,
+            vat_number: value.vat_number,
         };
         Ok(order_dto)
     }
