@@ -5,7 +5,7 @@ use std::{
     collections::{BTreeSet, HashSet},
 };
 
-#[derive(InputObject)]
+#[derive(Debug, InputObject)]
 pub struct CreateOrderInput {
     /// UUID of user owning the order.
     pub user_id: Uuid,
@@ -19,11 +19,9 @@ pub struct CreateOrderInput {
     pub payment_information_id: Uuid,
     /// VAT number.
     pub vat_number: String,
-    /// Optional payment authorization data.
-    pub payment_authorization: Option<PaymentAuthorizationInput>,
 }
 
-#[derive(InputObject, PartialEq, Eq, Clone)]
+#[derive(Debug, InputObject, PartialEq, Eq, Clone)]
 pub struct OrderItemInput {
     /// UUID of shopping cart item associated with order item.
     pub shopping_cart_item_id: Uuid,
@@ -50,4 +48,12 @@ impl Ord for OrderItemInput {
     fn cmp(&self, other: &Self) -> Ordering {
         self.shopping_cart_item_id.cmp(&other.shopping_cart_item_id)
     }
+}
+
+#[derive(Debug, InputObject)]
+pub struct PlaceOrderInput {
+    /// UUID of order to place.
+    pub id: Uuid,
+    /// Optional payment authorization data.
+    pub payment_authorization: Option<PaymentAuthorizationInput>,
 }

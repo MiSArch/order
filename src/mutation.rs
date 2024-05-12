@@ -28,6 +28,7 @@ use crate::foreign_types::TaxRateVersion;
 use crate::foreign_types::UserAddress;
 use crate::mutation_input_structs::CreateOrderInput;
 use crate::mutation_input_structs::OrderItemInput;
+use crate::mutation_input_structs::PlaceOrderInput;
 use crate::order::OrderDTO;
 use crate::order::OrderStatus;
 use crate::order_item::OrderItem;
@@ -63,7 +64,6 @@ impl Mutation {
         let invoice_address = UserAddress::from(input.invoice_address_id);
         let compensatable_order_amount =
             calculate_compensatable_order_amount(&internal_order_items);
-        let payment_authorization = build_payment_authorization(&input);
         let order = Order {
             _id: Uuid::new(),
             user: User::from(input.user_id),
@@ -76,33 +76,36 @@ impl Mutation {
             invoice_address,
             compensatable_order_amount,
             payment_information_id: input.payment_information_id,
-            payment_authorization,
             vat_number: input.vat_number,
         };
         insert_order_in_mongodb(&collection, order).await
     }
 
     /// Places an existing order by changing its status to `OrderStatus::Placed`.
+    ///
+    /// Adds optional payment authorization input to order DTO when placing order.
     async fn place_order<'a>(
         &self,
         ctx: &Context<'a>,
-        #[graphql(desc = "Uuid of order to place")] id: Uuid,
+        #[graphql(desc = "PlaceOrderInput")] input: PlaceOrderInput,
     ) -> Result<Order> {
         let db_client = ctx.data::<Database>()?;
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
-        let mut order = query_order(&collection, id).await?;
+        let mut order = query_order(&collection, input.id).await?;
         authorize_user(&ctx, Some(order.user._id))?;
-        set_status_placed(&collection, id).await?;
-        order = query_order(&collection, id).await?;
-        send_order_created_event(order.clone()).await?;
+        let payment_authorization = build_payment_authorization(&input);
+        set_status_placed(&collection, input.id).await?;
+        order = query_order(&collection, input.id).await?;
+        let order_dto = OrderDTO::try_from((order.clone(), payment_authorization))?;
+        send_order_created_event(order_dto).await?;
         Ok(order)
     }
 }
 
-/// Builds payment authorization from create order input.
+/// Builds payment authorization from place order input.
 ///
-/// `create_order_input` - The create order input to build the payment authorization from.
-fn build_payment_authorization(input: &CreateOrderInput) -> Option<PaymentAuthorization> {
+/// `input` - The place order input to build the payment authorization from.
+fn build_payment_authorization(input: &PlaceOrderInput) -> Option<PaymentAuthorization> {
     input
         .payment_authorization
         .clone()
@@ -950,9 +953,8 @@ fn build_calculate_shipment_fees_input(
 }
 
 /// Sends an `order/order/created` created event containing the order context.
-async fn send_order_created_event(order: Order) -> Result<()> {
+async fn send_order_created_event(order_dto: OrderDTO) -> Result<()> {
     let client = reqwest::Client::new();
-    let order_dto = OrderDTO::try_from(order)?;
     client
         .post("http://localhost:3500/v1.0/publish/pubsub/order/order/created")
         .json(&order_dto)
