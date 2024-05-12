@@ -128,7 +128,10 @@ async fn insert_order_in_mongodb(collection: &Collection<Order>, order: Order) -
 ///
 /// `order_items` - Order items to calculate compensatable amount for.
 fn calculate_compensatable_order_amount(order_items: &Vec<OrderItem>) -> u64 {
-    order_items.iter().map(|order_item| order_item.compensatable_amount).sum()
+    order_items
+        .iter()
+        .map(|order_item| order_item.compensatable_amount)
+        .sum()
 }
 
 /// Extracts UUID from Bson.
@@ -514,7 +517,10 @@ fn calculate_availability_of_product_variant_ids(
             Ok(*count >= *expected_count)
         })
         .collect::<Result<Vec<bool>>>()?;
-    match availabilites.into_iter().all(|is_available| is_available == true) {
+    match availabilites
+        .into_iter()
+        .all(|is_available| is_available == true)
+    {
         true => Ok(()),
         false => Err(Error::new(
             "Not all requested product variants are available.",
@@ -605,7 +611,8 @@ fn build_counts_by_product_variant_ids(
         .map(|order_item_input| {
             let id_and_count_ref = ids_and_counts.get(&order_item_input.shopping_cart_item_id);
             let id_and_count = id_and_count_ref.and_then(|(id, count)| Some((*id, *count)));
-            let error = build_hash_map_error(ids_and_counts, order_item_input.shopping_cart_item_id);
+            let error =
+                build_hash_map_error(ids_and_counts, order_item_input.shopping_cart_item_id);
             id_and_count.ok_or(error)
         })
         .collect()
@@ -621,8 +628,10 @@ fn build_order_item_inputs_by_product_variant_ids(
         .iter()
         .map(|order_item_input| {
             let id_and_count_ref = ids_and_counts.get(&order_item_input.shopping_cart_item_id);
-            let id_and_count = id_and_count_ref.and_then(|(id, _)| Some((*id, order_item_input.clone())));
-            let error = build_hash_map_error(ids_and_counts, order_item_input.shopping_cart_item_id);
+            let id_and_count =
+                id_and_count_ref.and_then(|(id, _)| Some((*id, order_item_input.clone())));
+            let error =
+                build_hash_map_error(ids_and_counts, order_item_input.shopping_cart_item_id);
             id_and_count.ok_or(error)
         })
         .collect()
@@ -1030,7 +1039,10 @@ where
     {
         Ok(cursor) => {
             let objects: Vec<T> = cursor.try_collect().await?;
-            let ids: Vec<Uuid> = objects.iter().map(|object: &T| Uuid::from(object.clone())).collect();
+            let ids: Vec<Uuid> = objects
+                .iter()
+                .map(|object: &T| Uuid::from(object.clone()))
+                .collect();
             object_ids
                 .iter()
                 .fold(Ok(()), |o, id| match ids.contains(id) {

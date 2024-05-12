@@ -34,7 +34,11 @@ pub struct OrderItemDTO {
 
 impl From<OrderItem> for OrderItemDTO {
     fn from(value: OrderItem) -> Self {
-        let discount_ids = value.internal_discounts.iter().map(|discount| discount._id).collect();
+        let discount_ids = value
+            .internal_discounts
+            .iter()
+            .map(|discount| discount._id)
+            .collect();
         Self {
             id: value._id,
             created_at: value.created_at.to_chrono(),

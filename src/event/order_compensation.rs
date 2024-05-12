@@ -68,7 +68,11 @@ async fn calculate_amount_to_compensate(
     let compensatable_amounts: Vec<u64> = order
         .internal_order_items
         .iter()
-        .filter(|order_item| shipment_failed_event_data.order_item_ids.contains(&order_item._id))
+        .filter(|order_item| {
+            shipment_failed_event_data
+                .order_item_ids
+                .contains(&order_item._id)
+        })
         .map(|order_item| order_item.compensatable_amount)
         .collect();
     let amount_to_compensate = compensatable_amounts.iter().sum();
