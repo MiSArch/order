@@ -4,15 +4,17 @@ use futures::TryStreamExt;
 use mongodb::Collection;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    http_event_service::ShipmentFailedEventData, mutation::validate_object, order::Order,
-    query::query_object,
+use crate::graphql::{model::order::Order, mutation::validate_object, query::query_object};
+
+use super::{
+    http_event_service::ShipmentFailedEventData,
+    model::order_compensation_dto::OrderCompensationDTO,
 };
 
 /// Models an order compensation that is sent as an event and logged in MongoDB.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OrderCompensation {
-    /// OrderCompensation UUID.
+    /// Order compensation UUID.
     pub _id: Uuid,
     /// UUID of the order.
     pub order_id: Uuid,
@@ -24,37 +26,28 @@ pub struct OrderCompensation {
     pub amount_to_compensate: u64,
 }
 
-/// DTO that models an order compensation that is sent as an event and logged in MongoDB.
-#[derive(Debug, Serialize)]
-pub struct OrderCompensationDTO {
-    /// OrderCompensation UUID.
-    pub id: Uuid,
-    /// Amount of order compensation
-    pub amount_to_compensate: u64,
-}
-
-impl From<OrderCompensation> for OrderCompensationDTO {
-    fn from(value: OrderCompensation) -> Self {
-        Self {
-            id: value._id,
-            amount_to_compensate: value.amount_to_compensate,
-        }
-    }
-}
-
 /// Responsible for compensating a shipment based on a failed shipment event. Saves compensation in MongoDB.
+///
+/// * `order_collection` - MongoDB collection to validate order with.
+/// * `order_compensation_collection` - MongoDB collection to compensate order in.
+/// * `shipment_failed_event_data` - Event data of failed shipment event containing UUID of order to compensate.
 pub async fn compensate_order(
     order_collection: &Collection<Order>,
     order_compensation_collection: &Collection<OrderCompensation>,
-    data: ShipmentFailedEventData,
+    shipment_failed_event_data: ShipmentFailedEventData,
 ) -> Result<()> {
-    validate_object(&order_collection, data.order_id).await?;
-    verify_items_uncompensated(&order_compensation_collection, &data.order_item_ids).await?;
-    let amount_to_compensate = calculate_amount_to_compensate(&order_collection, &data).await?;
+    validate_object(&order_collection, shipment_failed_event_data.order_id).await?;
+    verify_items_uncompensated(
+        &order_compensation_collection,
+        &shipment_failed_event_data.order_item_ids,
+    )
+    .await?;
+    let amount_to_compensate =
+        calculate_amount_to_compensate(&order_collection, &shipment_failed_event_data).await?;
     let order_compensation = OrderCompensation {
         _id: Uuid::new(),
-        order_id: data.order_id,
-        order_item_ids: data.order_item_ids,
+        order_id: shipment_failed_event_data.order_id,
+        order_item_ids: shipment_failed_event_data.order_item_ids,
         triggered_at: DateTime::now(),
         amount_to_compensate,
     };
@@ -64,24 +57,30 @@ pub async fn compensate_order(
 }
 
 /// Calculates the amount that the compensation event should compensate. Based on the failed shipment event.
+///
+/// * `order_collection` - MongoDB collection containing order to calculate compensatable amount from.
+/// * `shipment_failed_event_data` - Event data of failed shipment event containing UUID of order to calculate compensatable amount for.
 async fn calculate_amount_to_compensate(
     order_collection: &Collection<Order>,
-    data: &ShipmentFailedEventData,
+    shipment_failed_event_data: &ShipmentFailedEventData,
 ) -> Result<u64> {
-    let order = query_object(&order_collection, data.order_id).await?;
+    let order = query_object(&order_collection, shipment_failed_event_data.order_id).await?;
     let compensatable_amounts: Vec<u64> = order
         .internal_order_items
         .iter()
-        .filter(|i| data.order_item_ids.contains(&i._id))
-        .map(|i| i.compensatable_amount)
+        .filter(|order_item| shipment_failed_event_data.order_item_ids.contains(&order_item._id))
+        .map(|order_item| order_item.compensatable_amount)
         .collect();
     let amount_to_compensate = compensatable_amounts.iter().sum();
     Ok(amount_to_compensate)
 }
 
-/// Verifies that all of the items are uncompensated, otherwise returns an Err.
+/// Verifies that all of the items are uncompensated, otherwise returns an error.
+///
+/// * `order_compensation_collection` - MongoDB collection of order compensations.
+/// * `order_item_ids` - UUIDs of order items to verify as uncompensated.
 async fn verify_items_uncompensated(
-    order_collection: &Collection<OrderCompensation>,
+    order_compensation_collection: &Collection<OrderCompensation>,
     order_item_ids: &Vec<Uuid>,
 ) -> Result<()> {
     let query = doc! {"order_item_ids": {"$not": {"$elemMatch": {"$in": order_item_ids}}}};
@@ -89,7 +88,7 @@ async fn verify_items_uncompensated(
         "Order items of UUIDs: `{:?}` could not be verfied.",
         order_item_ids
     );
-    match order_collection.find(query, None).await {
+    match order_compensation_collection.find(query, None).await {
         Ok(cursor) => {
             let objects: Vec<OrderCompensation> = cursor.try_collect().await?;
             match objects.len() {
@@ -101,18 +100,23 @@ async fn verify_items_uncompensated(
     }
 }
 
-/// Inserts OrderCompensation in MongoDB.
+/// Inserts order compenstation in MongoDB.
+///
+/// * `collection` - MongoDB collection to insert order compensation in.
+/// * `order_compensation` - Order compensation to insert.
 async fn insert_order_compensation_in_mongodb(
-    order_collection: &Collection<OrderCompensation>,
+    collection: &Collection<OrderCompensation>,
     order_compensation: &OrderCompensation,
 ) -> Result<()> {
-    match order_collection.insert_one(order_compensation, None).await {
+    match collection.insert_one(order_compensation, None).await {
         Ok(_) => Ok(()),
         Err(_) => Err(Error::new("Adding order compensation failed in MongoDB.")),
     }
 }
 
 /// Sends an `order/order/compensate` created event containing the amount to compensate.
+///
+/// * `order_compensation` - Order compensation to create event with.
 async fn send_order_compensation_event(order_compensation: OrderCompensation) -> Result<()> {
     let client = reqwest::Client::new();
     let order_compensation_dto = OrderCompensationDTO::from(order_compensation);

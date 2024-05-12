@@ -4,47 +4,47 @@ use async_graphql::{ComplexObject, Result, SimpleObject};
 use bson::{DateTime, Uuid};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    discount_connection::DiscountConnection,
+use super::{
+    super::mutation_input_structs::OrderItemInput,
+    connection::discount_connection::DiscountConnection,
     foreign_types::{
         Discount, ProductVariant, ProductVariantVersion, ShipmentMethod, ShoppingCartItem,
         TaxRateVersion,
     },
-    mutation_input_structs::OrderItemInput,
     order_datatypes::{CommonOrderInput, OrderDirection},
 };
 
-/// Describes an OrderItem of an Order.
+/// Describes an order item of an order.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, SimpleObject)]
 #[graphql(complex)]
 pub struct OrderItem {
-    /// OrderItem UUID.
+    /// order item UUID.
     pub _id: Uuid,
-    /// Timestamp when OrderItem was created.
+    /// Timestamp when order item was created.
     pub created_at: DateTime,
-    /// Product variant associated with OrderItem.
+    /// Product variant associated with order item.
     pub product_variant: ProductVariant,
-    /// Product variant version associated with OrderItem.
+    /// Product variant version associated with order item.
     pub product_variant_version: ProductVariantVersion,
-    /// Tax rate version associated with OrderItem.
+    /// Tax rate version associated with order item.
     pub tax_rate_version: TaxRateVersion,
-    /// Shopping cart item associated with OrderItem.
+    /// Shopping cart item associated with order item.
     pub shopping_cart_item: ShoppingCartItem,
-    /// Specifies the quantity of the OrderItem.
+    /// Specifies the quantity of the order item.
     pub count: u64,
     /// Total cost of product item, which can also be refunded.
     pub compensatable_amount: u64,
     /// Shipment method of order item.
     pub shipment_method: ShipmentMethod,
-    /// The internal vector consisting of Discounts.
+    /// The internal vector consisting of discounts.
     #[graphql(skip)]
     pub internal_discounts: BTreeSet<Discount>,
 }
 
 impl OrderItem {
-    /// Constructor for OrderItems.
+    /// Constructor for order items.
     ///
-    /// Queries ProductVariantVersion from MongoDB.
+    /// Queries product variant version from MongoDB.
     pub fn new(
         order_item_input: &OrderItemInput,
         product_variant: &ProductVariant,
@@ -123,7 +123,7 @@ impl Ord for OrderItem {
     }
 }
 
-/// Sorts vector of discounts according to BaseOrder.
+/// Sorts vector of discounts according to base order.
 ///
 /// * `discounts` - Vector of discounts to sort.
 /// * `order_by` - Specifies order of sorted result.
@@ -139,7 +139,7 @@ fn sort_discounts(discounts: &mut Vec<Discount>, order_by: Option<CommonOrderInp
     });
 }
 
-/// Applies fees and discounts to calculate the compensatable amount of an OrderItem.
+/// Applies fees and discounts to calculate the compensatable amount of an order item.
 fn calculate_compensatable_amount(
     product_variant_version: &ProductVariantVersion,
     internal_discounts: &BTreeSet<Discount>,
@@ -152,51 +152,4 @@ fn calculate_compensatable_amount(
         });
     let total_price = discounted_price as u64;
     total_price
-}
-
-/// Describes DTO of an OrderItem of an Order.
-///
-/// `product_item` is set to None as long as `OrderStatus::Pending`.
-/// Must contain a ProductItem when `OrderStatus::Placed` or `OrderStatus::Rejected`.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OrderItemDTO {
-    /// OrderItem UUID.
-    pub id: Uuid,
-    /// Timestamp when OrderItem was created.
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    /// UUID of product variant associated with OrderItem.
-    pub product_variant_id: Uuid,
-    /// UUID of product variant version associated with OrderItem.
-    pub product_variant_version_id: Uuid,
-    /// UUID of tax rate version associated with OrderItem.
-    pub tax_rate_version_id: Uuid,
-    /// UUID of shopping cart item associated with OrderItem.
-    pub shopping_cart_item_id: Uuid,
-    /// Specifies the quantity of the OrderItem.
-    pub count: u64,
-    /// Total cost of product item, which can also be refunded.
-    pub compensatable_amount: u64,
-    /// UUID of shipment method of order item.
-    pub shipment_method_id: Uuid,
-    /// UUIDs of discounts applied to order item.
-    pub discount_ids: Vec<Uuid>,
-}
-
-impl From<OrderItem> for OrderItemDTO {
-    fn from(value: OrderItem) -> Self {
-        let discount_ids = value.internal_discounts.iter().map(|d| d._id).collect();
-        Self {
-            id: value._id,
-            created_at: value.created_at.to_chrono(),
-            product_variant_id: value.product_variant._id,
-            product_variant_version_id: value.product_variant_version._id,
-            tax_rate_version_id: value.tax_rate_version._id,
-            shopping_cart_item_id: value.shopping_cart_item._id,
-            count: value.count,
-            compensatable_amount: value.compensatable_amount,
-            shipment_method_id: value.shipment_method._id,
-            discount_ids,
-        }
-    }
 }

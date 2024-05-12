@@ -5,12 +5,20 @@ use mongodb::{options::UpdateOptions, Collection};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    foreign_types::{Coupon, ProductVariant, ProductVariantVersion, ShipmentMethod, TaxRate},
-    order::Order,
-    order_compensation::{compensate_order, OrderCompensation},
-    query::query_object,
-    user::User,
+    event::order_compensation::compensate_order,
+    graphql::{
+        model::{
+            foreign_types::{
+                Coupon, ProductVariant, ProductVariantVersion, ShipmentMethod, TaxRate,
+            },
+            order::Order,
+            user::User,
+        },
+        query::query_object,
+    },
 };
+
+use super::order_compensation::OrderCompensation;
 
 /// Data to send to Dapr in order to describe a subscription.
 #[derive(Serialize)]
@@ -34,22 +42,22 @@ impl Default for TopicEventResponse {
     }
 }
 
-/// Relevant part of Dapr event wrapped in a CloudEnvelope.
+/// Relevant part of Dapr event wrapped in a cloud envelope.
 #[derive(Deserialize, Debug)]
 pub struct Event<T> {
     pub topic: String,
     pub data: T,
 }
 
-/// Event data containing a Uuid.
+/// Event data containing a UUID.
 #[derive(Deserialize, Debug)]
 pub struct UuidEventData {
     pub id: Uuid,
 }
 
-/// Event data containing a ProductVariantVersion.
+/// Event data containing a product variant version.
 ///
-/// Differs from ProductVariantVersion in the `id` field naming.
+/// Differs from product variant version in the `id` field naming.
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ProductVariantVersionEventData {
@@ -192,9 +200,9 @@ pub async fn list_topic_subscriptions() -> Result<Json<Vec<Pubsub>>, StatusCode>
 /// HTTP endpoint to receive UUID creation events.
 ///
 /// Includes all creation events that consist of only UUIDs:
-/// - Coupon
-/// - ShipmentMethod
-/// - User
+/// - `Coupon`
+/// - `ShipmentMethod`
+/// - `User`
 #[debug_handler(state = HttpEventServiceState)]
 pub async fn on_id_creation_event(
     State(state): State<HttpEventServiceState>,
@@ -215,7 +223,7 @@ pub async fn on_id_creation_event(
     Ok(Json(TopicEventResponse::default()))
 }
 
-/// HTTP endpoint to receive ProductVariantVersion creation events.
+/// HTTP endpoint to receive product variant version creation events.
 #[debug_handler(state = HttpEventServiceState)]
 pub async fn on_product_variant_version_creation_event(
     State(state): State<HttpEventServiceState>,
@@ -256,7 +264,10 @@ pub async fn on_product_variant_update_event(
     Ok(Json(TopicEventResponse::default()))
 }
 
-/// HTTP endpoint to receive TaxRateVersion creation events.
+/// HTTP endpoint to receive tax rate version creation events.
+///
+/// * `state` - Service state containing database connections.
+/// * `event` - Event handled by endpoint.
 #[debug_handler(state = HttpEventServiceState)]
 pub async fn on_tax_rate_version_creation_event(
     State(state): State<HttpEventServiceState>,
@@ -274,7 +285,10 @@ pub async fn on_tax_rate_version_creation_event(
     Ok(Json(TopicEventResponse::default()))
 }
 
-/// HTTP endpoint to receive user Address creation events.
+/// HTTP endpoint to receive user address creation events.
+///
+/// * `state` - Service state containing database connections.
+/// * `event` - Event handled by endpoint.
 #[debug_handler(state = HttpEventServiceState)]
 pub async fn on_user_address_creation_event(
     State(state): State<HttpEventServiceState>,
@@ -291,7 +305,10 @@ pub async fn on_user_address_creation_event(
     Ok(Json(TopicEventResponse::default()))
 }
 
-/// HTTP endpoint to receive user Address archive events.
+/// HTTP endpoint to receive user address archive events.
+///
+/// * `state` - Service state containing database connections.
+/// * `event` - Event handled by endpoint.
 #[debug_handler(state = HttpEventServiceState)]
 pub async fn on_user_address_archived_event(
     State(state): State<HttpEventServiceState>,
@@ -308,7 +325,10 @@ pub async fn on_user_address_archived_event(
     Ok(Json(TopicEventResponse::default()))
 }
 
-/// HTTP endpoint to receive Shipment creation events.
+/// HTTP endpoint to receive shipment creation events.
+///
+/// * `state` - Service state containing database connections.
+/// * `event` - Event handled by endpoint.
 #[debug_handler(state = HttpEventServiceState)]
 pub async fn on_shipment_creation_failed_event(
     State(state): State<HttpEventServiceState>,
@@ -329,7 +349,10 @@ pub async fn on_shipment_creation_failed_event(
     Ok(Json(TopicEventResponse::default()))
 }
 
-/// Create or update ProductVariant in MongoDB.
+/// Create or update product variant in MongoDB.
+///
+/// * `collection` - MongoDB collection to create or update product variant in.
+/// * `product_variant_version_event_data` - Product variant version event data containg product variant version to create or update.
 pub async fn create_or_update_product_variant_in_mongodb(
     collection: &Collection<ProductVariant>,
     product_variant_version_event_data: ProductVariantVersionEventData,
@@ -355,7 +378,11 @@ pub async fn create_or_update_product_variant_in_mongodb(
     }
 }
 
-/// Update ProductVariant in MongoDB.
+/// Update product variant in MongoDB.
+///
+/// * `product_variant_version_event_data` - Product variant version event data containg new product variant version.
+/// * `collection` - MongoDB collection to update product variant in.
+/// * `product_variant` - Product variant to update.
 async fn update_product_variant_in_mongodb(
     product_variant_version_event_data: ProductVariantVersionEventData,
     collection: &Collection<ProductVariant>,
@@ -376,7 +403,10 @@ async fn update_product_variant_in_mongodb(
     }
 }
 
-/// Create ProductVariant in MongoDB.
+/// Create product variant in MongoDB.
+///
+/// * `product_variant_version_event_data` - Product variant version event data to create product variant with.
+/// * `collection` - MongoDB collection to create product variant in.
 async fn create_product_variant_in_mongodb(
     product_variant_version_event_data: ProductVariantVersionEventData,
     collection: &Collection<ProductVariant>,
@@ -388,7 +418,10 @@ async fn create_product_variant_in_mongodb(
     }
 }
 
-/// Create or update TaxRate in MongoDB.
+/// Create or update tax rate in MongoDB.
+///
+/// * `collection` - MongoDB collection to create or update tax rate in.
+/// * `tax_rate` - Tax rate to create or update.
 pub async fn create_or_update_tax_rate_in_mongodb(
     collection: &Collection<TaxRate>,
     tax_rate: TaxRate,
@@ -407,7 +440,10 @@ pub async fn create_or_update_tax_rate_in_mongodb(
     }
 }
 
-/// Inserts user Address in MongoDB.
+/// Inserts user address in MongoDB.
+///
+/// * `collection` - MongoDB collection to insert user address in.
+/// * `user_address_event_data` - User address event data containing user address to insert.
 pub async fn insert_user_address_in_mongodb(
     collection: &Collection<User>,
     user_address_event_data: UserAddressEventData,
@@ -425,7 +461,10 @@ pub async fn insert_user_address_in_mongodb(
     }
 }
 
-/// Remove user Address in MongoDB.
+/// Remove user address from MongoDB.
+///
+/// * `collection` - MongoDB collection remove user address from.
+/// * `user_address_event_data` - User address event data containing user address to remove.
 pub async fn remove_user_address_in_mongodb(
     collection: &Collection<User>,
     user_address_event_data: UserAddressEventData,
@@ -443,6 +482,10 @@ pub async fn remove_user_address_in_mongodb(
     }
 }
 
+/// Updates visibility of product variant in MongoDB.
+///
+/// * `collection` - MongoDB collection to update the product visibility in.
+/// * `update_product_variant_event_data` - Update product variant event data containing new product visibility.
 async fn update_product_variant_visibility_in_mongodb(
     collection: &Collection<ProductVariant>,
     update_product_variant_event_data: UpdateProductVariantEventData,
@@ -460,7 +503,10 @@ async fn update_product_variant_visibility_in_mongodb(
     }
 }
 
-/// Create a new object: T in MongoDB.
+/// Create a new object: `T` in MongoDB.
+///
+/// * `collection` - MongoDB collection to add newly created object to.
+/// * `id` - UUID of newly created object.
 pub async fn create_in_mongodb<T: Serialize + From<Uuid>>(
     collection: &Collection<T>,
     id: Uuid,

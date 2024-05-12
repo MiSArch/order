@@ -16,50 +16,33 @@ use axum::{
 
 use clap::{arg, command, Parser};
 
-use order_compensation::OrderCompensation;
-use simple_logger::SimpleLogger;
-
-use log::info;
+use log::{info, Level};
 use mongodb::{options::ClientOptions, Client, Database};
-
-mod order;
-use order::Order;
-
-mod order_item;
-
-mod query;
-use query::Query;
-
-mod mutation;
-use mutation::Mutation;
-
-use foreign_types::{Coupon, ProductVariant, ShipmentMethod, TaxRate};
-
-mod user;
-use user::User;
-
-mod http_event_service;
-use http_event_service::{
-    list_topic_subscriptions, on_id_creation_event, on_product_variant_update_event,
-    on_product_variant_version_creation_event, on_shipment_creation_failed_event,
-    on_tax_rate_version_creation_event, on_user_address_archived_event,
-    on_user_address_creation_event, HttpEventServiceState,
-};
 
 mod authorization;
 use authorization::AuthorizedUserHeader;
 
-mod order_compensation;
+mod event;
+mod graphql;
 
-mod base_connection;
-mod discount_connection;
-mod foreign_types;
-mod mutation_input_structs;
-mod order_connection;
-mod order_datatypes;
-mod order_item_connection;
-mod payment_authorization;
-mod product_variant_version_connection;
+use event::{
+    http_event_service::{
+        list_topic_subscriptions, on_id_creation_event, on_product_variant_update_event,
+        on_product_variant_version_creation_event, on_shipment_creation_failed_event,
+        on_tax_rate_version_creation_event, on_user_address_archived_event,
+        on_user_address_creation_event, HttpEventServiceState,
+    },
+    order_compensation::OrderCompensation,
+};
+use graphql::{
+    model::{
+        foreign_types::{Coupon, ProductVariant, ShipmentMethod, TaxRate},
+        order::Order,
+        user::User,
+    },
+    mutation::Mutation,
+    query::Query,
+};
 
 /// Builds the GraphiQL frontend.
 async fn graphiql() -> impl IntoResponse {
@@ -86,6 +69,8 @@ async fn db_connection() -> Client {
 /// Returns Router that establishes connection to Dapr.
 ///
 /// Creates endpoints to define pub/sub interaction with Dapr.
+///
+/// * `db_client` - MongoDB database client.
 async fn build_dapr_router(db_client: Database) -> Router {
     let product_variant_collection: mongodb::Collection<ProductVariant> =
         db_client.collection::<ProductVariant>("product_variants");
@@ -151,7 +136,7 @@ struct Args {
 /// Activates logger and parses argument for optional schema generation. Otherwise starts gRPC and GraphQL server.
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    SimpleLogger::new().init().unwrap();
+    simple_logger::init_with_level(Level::Warn).unwrap();
 
     let args = Args::parse();
     if args.generate_schema {
@@ -171,6 +156,10 @@ async fn main() -> std::io::Result<()> {
 ///
 /// Parses the "Authenticate-User" header and writes it in the context data of the specfic request.
 /// Then executes the GraphQL schema with the request.
+///
+/// * `schema` - GraphQL schema used by handler.
+/// * `headers` - Header map containing headers of request.
+/// * `request` - GraphQL request.
 async fn graphql_handler(
     State(schema): State<Schema<Query, Mutation, EmptySubscription>>,
     headers: HeaderMap,

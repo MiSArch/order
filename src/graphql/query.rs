@@ -1,6 +1,5 @@
 use std::{any::type_name, collections::HashMap};
 
-use crate::{authorization::authorize_user, order_item::OrderItem, user::User, Order};
 use async_graphql::{Context, Error, Object, Result};
 
 use bson::Uuid;
@@ -8,12 +7,16 @@ use futures::TryStreamExt;
 use mongodb::{bson::doc, Collection, Database};
 use serde::Deserialize;
 
+use crate::authorization::authorize_user;
+
+use super::model::{order::Order, order_item::OrderItem, user::User};
+
 /// Describes GraphQL order queries.
 pub struct Query;
 
 #[Object]
 impl Query {
-    /// Entity resolver for user of specific id.
+    /// Entity resolver for user of specific UUID.
     #[graphql(entity)]
     async fn user_entity_resolver<'a>(
         &self,
@@ -25,7 +28,7 @@ impl Query {
         query_object(&collection, id).await
     }
 
-    /// Retrieves order of specific id.
+    /// Retrieves order of specific UUID.
     async fn order<'a>(
         &self,
         ctx: &Context<'a>,
@@ -38,7 +41,7 @@ impl Query {
         Ok(order)
     }
 
-    /// Entity resolver for order of specific id.
+    /// Entity resolver for order of specific UUID.
     #[graphql(entity)]
     async fn order_entity_resolver<'a>(
         &self,
@@ -51,7 +54,7 @@ impl Query {
         Ok(order)
     }
 
-    /// Retrieves order_item of specific id.
+    /// Retrieves order_item of specific UUID.
     async fn order_item<'a>(
         &self,
         ctx: &Context<'a>,
@@ -67,7 +70,7 @@ impl Query {
         Ok(order_item)
     }
 
-    /// Entity resolver for order_item of specific id.
+    /// Entity resolver for order_item of specific UUID.
     #[graphql(entity)]
     async fn order_item_entity_resolver<'a>(
         &self,
@@ -81,26 +84,10 @@ impl Query {
     }
 }
 
-/// Shared function to query a order from a MongoDB collection of orders
+/// Queries a user from an order item UUID.
 ///
-/// * `connection` - MongoDB database connection.
-/// * `id` - UUID of order.
-pub async fn query_order(collection: &Collection<Order>, id: Uuid) -> Result<Order> {
-    match collection.find_one(doc! {"_id": id }, None).await {
-        Ok(maybe_order) => match maybe_order {
-            Some(order) => Ok(order),
-            None => {
-                let message = format!("Order with UUID: `{}` not found.", id);
-                Err(Error::new(message))
-            }
-        },
-        Err(_) => {
-            let message = format!("Order with UUID: `{}` not found.", id);
-            Err(Error::new(message))
-        }
-    }
-}
-
+/// * `collection` - MongoDB collection of orders to retrieve user of order item from.
+/// * `id` - UUID of order item.
 async fn query_user_from_order_item_id(collection: &Collection<Order>, id: Uuid) -> Result<User> {
     match collection
         .find_one(doc! {"internal_order_items._id": id }, None)
@@ -120,7 +107,7 @@ async fn query_user_from_order_item_id(collection: &Collection<Order>, id: Uuid)
     }
 }
 
-/// Shared function to query an object: T from a MongoDB collection of object: T.
+/// Shared function to query an object: `T` from a MongoDB collection of object: `T`.
 ///
 /// * `connection` - MongoDB database connection.
 /// * `id` - UUID of object.
@@ -143,7 +130,7 @@ pub async fn query_object<T: for<'a> Deserialize<'a> + Unpin + Send + Sync>(
     }
 }
 
-/// Shared function to query objects: T from a MongoDB collection of object: T.
+/// Shared function to query objects: `T` from a MongoDB collection of object: `T`.
 ///
 /// * `connection` - MongoDB database connection.
 /// * `ids` - UUIDs of objects.
