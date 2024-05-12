@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::foreign_types::UserAddress;
 use crate::order_datatypes::OrderDirection;
 use crate::order_item::OrderItemDTO;
+use crate::payment_authorization::PaymentAuthorization;
 use crate::{
     order_datatypes::CommonOrderInput, order_item::OrderItem,
     order_item_connection::OrderItemConnection, user::User,
@@ -41,6 +42,9 @@ pub struct Order {
     pub compensatable_order_amount: u64,
     /// UUID of payment information that the order should be processed with.
     pub payment_information_id: Uuid,
+    /// VAT number.
+    #[graphql(skip)]
+    pub vat_number: String,
 }
 
 #[ComplexObject]
@@ -161,32 +165,40 @@ pub struct OrderDTO {
     pub compensatable_order_amount: u64,
     /// UUID of payment information that the order should be processed with.
     pub payment_information_id: Uuid,
+    /// Optional payment authorization information.
+    pub payment_authorization: Option<PaymentAuthorization>,
+    /// VAT number.
+    pub vat_number: String,
 }
 
-impl TryFrom<Order> for OrderDTO {
+impl TryFrom<(Order, Option<PaymentAuthorization>)> for OrderDTO {
     type Error = Error;
 
-    fn try_from(value: Order) -> Result<Self, Self::Error> {
-        let order_item_dtos = value
+    fn try_from(
+        (order, payment_authorization): (Order, Option<PaymentAuthorization>),
+    ) -> Result<Self, Self::Error> {
+        let order_item_dtos = order
             .internal_order_items
             .iter()
             .map(|o| OrderItemDTO::from(o.clone()))
             .collect();
         let message =
             format!("OrderDTO cannot be created, `placed_at` of the given Order is `None`");
-        let placed_at = value.placed_at.ok_or(Error::new(message))?.to_chrono();
+        let placed_at = order.placed_at.ok_or(Error::new(message))?.to_chrono();
         let order_dto = Self {
-            id: value._id,
-            user_id: value.user._id,
-            created_at: value.created_at.to_chrono(),
-            order_status: value.order_status,
+            id: order._id,
+            user_id: order.user._id,
+            created_at: order.created_at.to_chrono(),
+            order_status: order.order_status,
             placed_at,
-            rejection_reason: value.rejection_reason,
+            rejection_reason: order.rejection_reason,
             order_items: order_item_dtos,
-            shipment_address_id: value.shipment_address._id,
-            invoice_address_id: value.invoice_address._id,
-            compensatable_order_amount: value.compensatable_order_amount,
-            payment_information_id: value.payment_information_id,
+            shipment_address_id: order.shipment_address._id,
+            invoice_address_id: order.invoice_address._id,
+            compensatable_order_amount: order.compensatable_order_amount,
+            payment_information_id: order.payment_information_id,
+            payment_authorization: payment_authorization,
+            vat_number: order.vat_number,
         };
         Ok(order_dto)
     }

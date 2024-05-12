@@ -46,8 +46,8 @@ use http_event_service::{
     on_user_address_creation_event, HttpEventServiceState,
 };
 
-mod authentication;
-use authentication::AuthorizedUserHeader;
+mod authorization;
+use authorization::AuthorizedUserHeader;
 
 mod order_compensation;
 
@@ -58,6 +58,7 @@ mod mutation_input_structs;
 mod order_connection;
 mod order_datatypes;
 mod order_item_connection;
+mod payment_authorization;
 mod product_variant_version_connection;
 
 /// Builds the GraphiQL frontend.

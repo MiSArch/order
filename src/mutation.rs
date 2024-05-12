@@ -16,8 +16,8 @@ use std::collections::HashMap;
 use std::time::Duration;
 use std::time::SystemTime;
 
-use crate::authentication::authenticate_user;
-use crate::authentication::AuthorizedUserHeader;
+use crate::authorization::authorize_user;
+use crate::authorization::AuthorizedUserHeader;
 use crate::foreign_types::Coupon;
 use crate::foreign_types::Discount;
 use crate::foreign_types::ProductVariant;
@@ -28,9 +28,11 @@ use crate::foreign_types::TaxRateVersion;
 use crate::foreign_types::UserAddress;
 use crate::mutation_input_structs::CreateOrderInput;
 use crate::mutation_input_structs::OrderItemInput;
+use crate::mutation_input_structs::PlaceOrderInput;
 use crate::order::OrderDTO;
 use crate::order::OrderStatus;
 use crate::order_item::OrderItem;
+use crate::payment_authorization::PaymentAuthorization;
 use crate::query::query_object;
 use crate::query::query_objects;
 use crate::user::User;
@@ -51,7 +53,7 @@ impl Mutation {
         ctx: &Context<'a>,
         #[graphql(desc = "CreateOrderInput")] input: CreateOrderInput,
     ) -> Result<Order> {
-        authenticate_user(&ctx, input.user_id)?;
+        authorize_user(&ctx, Some(input.user_id))?;
         let db_client = ctx.data::<Database>()?;
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
         validate_order_input(db_client, &input).await?;
@@ -74,33 +76,57 @@ impl Mutation {
             invoice_address,
             compensatable_order_amount,
             payment_information_id: input.payment_information_id,
+            vat_number: input.vat_number,
         };
-        match collection.insert_one(order, None).await {
-            Ok(result) => {
-                let id = uuid_from_bson(result.inserted_id)?;
-                query_order(&collection, id).await
-            }
-            Err(_) => Err(Error::new("Adding order failed in MongoDB.")),
-        }
+        insert_order_in_mongodb(&collection, order).await
     }
 
     /// Places an existing order by changing its status to `OrderStatus::Placed`.
+    ///
+    /// Adds optional payment authorization input to order DTO when placing order.
     async fn place_order<'a>(
         &self,
         ctx: &Context<'a>,
-        #[graphql(desc = "Uuid of order to place")] id: Uuid,
+        #[graphql(desc = "PlaceOrderInput")] input: PlaceOrderInput,
     ) -> Result<Order> {
         let db_client = ctx.data::<Database>()?;
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
-        let mut order = query_order(&collection, id).await?;
-        authenticate_user(&ctx, order.user._id)?;
-        set_status_placed(&collection, id).await?;
-        order = query_order(&collection, id).await?;
-        send_order_created_event(order.clone()).await?;
+        let mut order = query_order(&collection, input.id).await?;
+        authorize_user(&ctx, Some(order.user._id))?;
+        let payment_authorization = build_payment_authorization(&input);
+        set_status_placed(&collection, input.id).await?;
+        order = query_order(&collection, input.id).await?;
+        let order_dto = OrderDTO::try_from((order.clone(), payment_authorization))?;
+        send_order_created_event(order_dto).await?;
         Ok(order)
     }
 }
 
+/// Builds payment authorization from place order input.
+///
+/// `input` - The place order input to build the payment authorization from.
+fn build_payment_authorization(input: &PlaceOrderInput) -> Option<PaymentAuthorization> {
+    input
+        .payment_authorization
+        .clone()
+        .and_then(|definitely_payment_authorization| {
+            Option::<PaymentAuthorization>::from(definitely_payment_authorization)
+        })
+}
+
+/// Inserts order in MongoDB and returns the order itself.
+///
+/// * `collection` - MongoDB collection to insert order in.
+/// * `order` - Order to insert.
+async fn insert_order_in_mongodb(collection: &Collection<Order>, order: Order) -> Result<Order> {
+    match collection.insert_one(order, None).await {
+        Ok(result) => {
+            let id = uuid_from_bson(result.inserted_id)?;
+            query_order(&collection, id).await
+        }
+        Err(_) => Err(Error::new("Adding order failed in MongoDB.")),
+    }
+}
 /// Calculates the total compensatable amount of all order items in the input by summing up their `compensatable_amount` attributes.
 fn calculate_compensatable_order_amount(order_items: &Vec<OrderItem>) -> u64 {
     order_items.iter().map(|o| o.compensatable_amount).sum()
@@ -927,9 +953,8 @@ fn build_calculate_shipment_fees_input(
 }
 
 /// Sends an `order/order/created` created event containing the order context.
-async fn send_order_created_event(order: Order) -> Result<()> {
+async fn send_order_created_event(order_dto: OrderDTO) -> Result<()> {
     let client = reqwest::Client::new();
-    let order_dto = OrderDTO::try_from(order)?;
     client
         .post("http://localhost:3500/v1.0/publish/pubsub/order/order/created")
         .json(&order_dto)
