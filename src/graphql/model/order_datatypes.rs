@@ -15,7 +15,7 @@ impl Default for OrderDirection {
     }
 }
 
-/// Implements conversion to i32 for MongoDB document sorting.
+/// Implements conversion to `i32` for MongoDB document sorting.
 impl From<OrderDirection> for i32 {
     fn from(value: OrderDirection) -> Self {
         match value {
@@ -78,7 +78,7 @@ impl Default for OrderOrderInput {
 
 /// Describes the fields that a foreign types can be ordered by.
 ///
-/// Only the Id valid at the moment.
+/// Only the id valid at the moment.
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
 pub enum CommonOrderField {
     /// Orders by "id".

@@ -1,8 +1,8 @@
 use async_graphql::SimpleObject;
 
-use crate::{base_connection::BaseConnection, foreign_types::Discount};
+use super::{super::foreign_types::Discount, base_connection::BaseConnection};
 
-/// A connection of Discounts.
+/// A connection of discounts.
 #[derive(SimpleObject)]
 #[graphql(shareable)]
 pub struct DiscountConnection {
@@ -14,7 +14,7 @@ pub struct DiscountConnection {
     pub total_count: u64,
 }
 
-/// Implementation of conversion from BaseConnection<Discount> to DiscountConnection.
+/// Implementation of conversion from `BaseConnection<Discount>` to `DiscountConnection`.
 ///
 /// Prevents GraphQL naming conflicts.
 impl From<BaseConnection<Discount>> for DiscountConnection {

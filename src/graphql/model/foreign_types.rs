@@ -3,8 +3,10 @@ use bson::{doc, Bson, Uuid};
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, hash::Hash};
 
-use crate::http_event_service::{ProductVariantVersionEventData, TaxRateVersionEventData};
-use crate::mutation::get_discounts;
+use crate::{
+    event::http_event_service::{ProductVariantVersionEventData, TaxRateVersionEventData},
+    graphql::mutation::get_discounts::GetDiscountsFindApplicableDiscountsDiscounts,
+};
 
 /// Foreign type of a product variant.
 #[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Copy, Clone, SimpleObject)]
@@ -258,8 +260,8 @@ impl PartialEq for Discount {
 
 impl Eq for Discount {}
 
-impl From<get_discounts::GetDiscountsFindApplicableDiscountsDiscounts> for Discount {
-    fn from(value: get_discounts::GetDiscountsFindApplicableDiscountsDiscounts) -> Self {
+impl From<GetDiscountsFindApplicableDiscountsDiscounts> for Discount {
+    fn from(value: GetDiscountsFindApplicableDiscountsDiscounts) -> Self {
         Self {
             _id: value.id,
             discount: value.discount,

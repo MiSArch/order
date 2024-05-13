@@ -1,8 +1,8 @@
 use async_graphql::SimpleObject;
 
-use crate::{base_connection::BaseConnection, foreign_types::ProductVariantVersion};
+use super::{super::foreign_types::ProductVariantVersion, base_connection::BaseConnection};
 
-/// A connection of ProductVariantVersions.
+/// A connection of product variant versions.
 #[derive(SimpleObject)]
 #[graphql(shareable)]
 pub struct ProductVariantVersionConnection {
@@ -14,7 +14,7 @@ pub struct ProductVariantVersionConnection {
     pub total_count: u64,
 }
 
-/// Implementation of conversion from BaseConnection<ProductVariantVersion> to ProductVariantVersionConnection.
+/// Implementation of conversion from `BaseConnection<ProductVariantVersion>` to `ProductVariantVersionConnection`.
 ///
 /// Prevents GraphQL naming conflicts.
 impl From<BaseConnection<ProductVariantVersion>> for ProductVariantVersionConnection {

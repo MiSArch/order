@@ -4,11 +4,14 @@ use mongodb::{options::FindOptions, Collection, Database};
 use mongodb_cursor_pagination::{error::CursorError, FindResult, PaginatedCursor};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    authorization::authorize_user,
-    base_connection::{BaseConnection, FindResultWrapper},
+use crate::authorization::authorize_user;
+
+use super::{
+    connection::{
+        base_connection::{BaseConnection, FindResultWrapper},
+        order_connection::OrderConnection,
+    },
     order::Order,
-    order_connection::OrderConnection,
     order_datatypes::OrderOrderInput,
 };
 
@@ -16,9 +19,9 @@ use crate::{
 #[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Clone, SimpleObject)]
 #[graphql(complex)]
 pub struct User {
-    /// UUID of the user.
+    /// UUID of user.
     pub _id: Uuid,
-    /// UUIDs of the users addresses.
+    /// UUIDs of users addresses.
     #[graphql(skip)]
     pub user_address_ids: Vec<Uuid>,
 }
@@ -45,7 +48,7 @@ impl User {
         let sorting_doc = doc! {order_order.field.unwrap_or_default().as_str(): i32::from(order_order.direction.unwrap_or_default())};
         let find_options = FindOptions::builder()
             .skip(skip)
-            .limit(first.map(|v| i64::from(v)))
+            .limit(first.map(|definitely_first| i64::from(definitely_first)))
             .sort(sorting_doc)
             .build();
         let document_collection = collection.clone_with_type::<Document>();

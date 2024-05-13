@@ -1,24 +1,24 @@
 use async_graphql::SimpleObject;
 
-use crate::{base_connection::BaseConnection, order::Order};
+use super::{super::order_item::OrderItem, base_connection::BaseConnection};
 
-/// A connection of Orders.
+/// A connection of order items.
 #[derive(SimpleObject)]
 #[graphql(shareable)]
-pub struct OrderConnection {
+pub struct OrderItemConnection {
     /// The resulting entities.
-    pub nodes: Vec<Order>,
+    pub nodes: Vec<OrderItem>,
     /// Whether this connection has a next page.
     pub has_next_page: bool,
     /// The total amount of items in this connection.
     pub total_count: u64,
 }
 
-/// Implementation of conversion from BaseConnection<Order> to OrderConnection.
+/// Implementation of conversion from `BaseConnection<OrderItem>` to `OrderItemConnection`.
 ///
 /// Prevents GraphQL naming conflicts.
-impl From<BaseConnection<Order>> for OrderConnection {
-    fn from(value: BaseConnection<Order>) -> Self {
+impl From<BaseConnection<OrderItem>> for OrderItemConnection {
+    fn from(value: BaseConnection<OrderItem>) -> Self {
         Self {
             nodes: value.nodes,
             has_next_page: value.has_next_page,

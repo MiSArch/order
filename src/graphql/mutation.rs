@@ -16,29 +16,25 @@ use std::collections::HashMap;
 use std::time::Duration;
 use std::time::SystemTime;
 
-use crate::authorization::authorize_user;
-use crate::authorization::AuthorizedUserHeader;
-use crate::foreign_types::Coupon;
-use crate::foreign_types::Discount;
-use crate::foreign_types::ProductVariant;
-use crate::foreign_types::ProductVariantVersion;
-use crate::foreign_types::ShipmentMethod;
-use crate::foreign_types::TaxRate;
-use crate::foreign_types::TaxRateVersion;
-use crate::foreign_types::UserAddress;
-use crate::mutation_input_structs::CreateOrderInput;
-use crate::mutation_input_structs::OrderItemInput;
-use crate::mutation_input_structs::PlaceOrderInput;
-use crate::order::OrderDTO;
-use crate::order::OrderStatus;
-use crate::order_item::OrderItem;
-use crate::payment_authorization::PaymentAuthorization;
-use crate::query::query_object;
-use crate::query::query_objects;
-use crate::user::User;
-use crate::{order::Order, query::query_order};
+use crate::{
+    authorization::{authorize_user, AuthorizedUserHeader},
+    event::model::order_dto::OrderDTO,
+};
 
-use self::get_shipment_fees::CalculateShipmentFeesInput;
+use super::{
+    model::{
+        foreign_types::{
+            Coupon, Discount, ProductVariant, ProductVariantVersion, ShipmentMethod, TaxRate,
+            TaxRateVersion, UserAddress,
+        },
+        order::{Order, OrderStatus},
+        order_item::OrderItem,
+        payment_authorization::PaymentAuthorization,
+        user::User,
+    },
+    mutation_input_structs::{CreateOrderInput, OrderItemInput, PlaceOrderInput},
+    query::{query_object, query_objects},
+};
 
 const PENDING_TIMEOUT: Duration = Duration::new(3600, 0);
 
@@ -91,11 +87,11 @@ impl Mutation {
     ) -> Result<Order> {
         let db_client = ctx.data::<Database>()?;
         let collection: Collection<Order> = db_client.collection::<Order>("orders");
-        let mut order = query_order(&collection, input.id).await?;
+        let mut order = query_object(&collection, input.id).await?;
         authorize_user(&ctx, Some(order.user._id))?;
         let payment_authorization = build_payment_authorization(&input);
         set_status_placed(&collection, input.id).await?;
-        order = query_order(&collection, input.id).await?;
+        order = query_object(&collection, input.id).await?;
         let order_dto = OrderDTO::try_from((order.clone(), payment_authorization))?;
         send_order_created_event(order_dto).await?;
         Ok(order)
@@ -122,19 +118,27 @@ async fn insert_order_in_mongodb(collection: &Collection<Order>, order: Order) -
     match collection.insert_one(order, None).await {
         Ok(result) => {
             let id = uuid_from_bson(result.inserted_id)?;
-            query_order(&collection, id).await
+            query_object(&collection, id).await
         }
         Err(_) => Err(Error::new("Adding order failed in MongoDB.")),
     }
 }
+
 /// Calculates the total compensatable amount of all order items in the input by summing up their `compensatable_amount` attributes.
+///
+/// `order_items` - Order items to calculate compensatable amount for.
 fn calculate_compensatable_order_amount(order_items: &Vec<OrderItem>) -> u64 {
-    order_items.iter().map(|o| o.compensatable_amount).sum()
+    order_items
+        .iter()
+        .map(|order_item| order_item.compensatable_amount)
+        .sum()
 }
 
 /// Extracts UUID from Bson.
 ///
 /// Creating a order returns a UUID in a Bson document. This function helps to extract the UUID.
+///
+/// * `bson` - BSON document to extract UUID from.
 fn uuid_from_bson(bson: Bson) -> Result<Uuid> {
     match bson {
         Bson::Binary(id) => Ok(id.to_uuid()?),
@@ -153,7 +157,7 @@ fn uuid_from_bson(bson: Bson) -> Result<Uuid> {
 /// Rejects order if timestamp of placement exceeds `PENDING_TIMEOUT` in relation to the order creation timestamp.
 ///
 /// * `collection` - MongoDB collection to update.
-/// * `input` - `UpdateOrderInput`.
+/// * `id` - UUID of order to set the order status to placed.
 async fn set_status_placed(collection: &Collection<Order>, id: Uuid) -> Result<()> {
     let current_timestamp_system_time = SystemTime::now();
     let order = query_object(&collection, id).await?;
@@ -175,6 +179,10 @@ async fn set_status_placed(collection: &Collection<Order>, id: Uuid) -> Result<(
 }
 
 /// Updates order to `OrderStatus::Placed` in MongoDB.
+///
+/// * `collection` - MongoDB collection to set the order status as placed in.
+/// * `id` - UUID of order to set the order status to placed.
+/// * `current_timestamp` - Timestamp of order placement.
 async fn set_status_placed_in_mongodb(
     collection: &Collection<Order>,
     id: Uuid,
@@ -196,7 +204,10 @@ async fn set_status_placed_in_mongodb(
 
 /// Updates order to `OrderStatus::Rejected` in MongoDB.
 ///
-/// This function always returns an Err.
+/// This function always returns an error.
+///
+/// `collection` - MongoDB collection to modify the order status in.
+/// `id` - UUID of order to set the status to rejected.
 async fn set_status_rejected_in_mongodb(collection: &Collection<Order>, id: Uuid) -> Result<()> {
     let result = collection
         .update_one(
@@ -240,7 +251,7 @@ async fn validate_order_items(
         db_client.collection::<ShipmentMethod>("shipment_methods");
     let shipment_method_ids = order_item_inputs
         .iter()
-        .map(|o| o.shipment_method_id)
+        .map(|order_item_input| order_item_input.shipment_method_id)
         .collect();
     validate_objects(&shipment_method_collection, shipment_method_ids).await?;
     validate_coupons(&db_client, &order_item_inputs).await?;
@@ -257,7 +268,7 @@ async fn validate_coupons(
     let coupon_collection: mongodb::Collection<Coupon> = db_client.collection::<Coupon>("coupons");
     let coupon_ids: Vec<Uuid> = order_item_inputs
         .iter()
-        .map(|o| o.coupon_ids.clone())
+        .map(|order_item_input| order_item_input.coupon_ids.clone())
         .flatten()
         .collect();
     validate_objects(&coupon_collection, coupon_ids).await
@@ -272,7 +283,7 @@ async fn validate_addresses(db_client: &Database, input: &CreateOrderInput) -> R
     validate_user_address(&user_collection, input.invoice_address_id, input.user_id).await
 }
 
-/// Creates OrderItems from OrderItemInputs.
+/// Creates order items from order item inputs.
 ///
 /// Used before creating orders.
 /// Each order can only contain an order item with a specific product variant once.
@@ -360,7 +371,7 @@ async fn query_or_obtain_order_item_attributes(
     ))
 }
 
-/// Zips HashMaps which contain the required attributes for construction to order items.
+/// Zips hash maps which contain the required attributes for construction to order items.
 fn zip_to_internal_order_items(
     order_item_inputs_by_product_variant_ids: HashMap<Uuid, OrderItemInput>,
     product_variants_by_product_variant_ids: HashMap<Uuid, ProductVariant>,
@@ -490,10 +501,10 @@ fn build_stock_counts_by_product_variant_from_response_data(
         }).collect()
 }
 
-/// Calculates the availability based on the actual and expected stock counts based on the product variant ids.
+/// Calculates the availability based on the actual and expected stock counts based on the product variant UUIDs.
 ///
 /// The expected amount or more product items need to be in stock for a product variant to be counted as available.
-/// All product variants need to be available for this function to pass without an Err.
+/// All product variants need to be available for this function to pass without an error.
 fn calculate_availability_of_product_variant_ids(
     stock_counts_by_product_variant_ids: &HashMap<Uuid, u64>,
     expected_stock_counts_by_product_variant_ids: &HashMap<Uuid, u64>,
@@ -506,7 +517,10 @@ fn calculate_availability_of_product_variant_ids(
             Ok(*count >= *expected_count)
         })
         .collect::<Result<Vec<bool>>>()?;
-    match availabilites.into_iter().all(|b| b == true) {
+    match availabilites
+        .into_iter()
+        .all(|is_available| is_available == true)
+    {
         true => Ok(()),
         false => Err(Error::new(
             "Not all requested product variants are available.",
@@ -570,7 +584,7 @@ async fn query_counts_by_product_variant_ids(
     ))
 }
 
-// Unwraps Enum and maps the result to a HashMap of shopping cart item ids as keys and (product_variant_id, count) as values.
+// Unwraps enum and maps the result to a hash map of shopping cart item ids as keys and `(product_variant_id, count)` as values.
 fn into_ids_and_counts_by_shopping_cart_item_ids(
     ids_and_counts_enum: get_shopping_cart_product_variant_ids_and_counts::GetShoppingCartProductVariantIdsAndCountsEntities,
 ) -> Result<HashMap<Uuid, (Uuid, u64)>> {
@@ -587,40 +601,43 @@ fn into_ids_and_counts_by_shopping_cart_item_ids(
 }
 
 /// Filters shopping cart items: `ids_and_counts` to map to `order_item_inputs`.
-/// Builds HashMap which maps product variant ids to counts.
+/// Builds hash map which maps product variant ids to counts.
 fn build_counts_by_product_variant_ids(
     order_item_inputs: &BTreeSet<OrderItemInput>,
     ids_and_counts: &HashMap<Uuid, (Uuid, u64)>,
 ) -> Result<HashMap<Uuid, u64>> {
     order_item_inputs
         .iter()
-        .map(|e| {
-            let id_and_count_ref = ids_and_counts.get(&e.shopping_cart_item_id);
+        .map(|order_item_input| {
+            let id_and_count_ref = ids_and_counts.get(&order_item_input.shopping_cart_item_id);
             let id_and_count = id_and_count_ref.and_then(|(id, count)| Some((*id, *count)));
-            let error = build_hash_map_error(ids_and_counts, e.shopping_cart_item_id);
+            let error =
+                build_hash_map_error(ids_and_counts, order_item_input.shopping_cart_item_id);
             id_and_count.ok_or(error)
         })
         .collect()
 }
 
 /// Filters shopping cart items: `ids_and_counts` to map to `order_item_inputs`.
-/// Builds HashMap which maps product variant ids to order item inputs.
+/// Builds hash map which maps product variant ids to order item inputs.
 fn build_order_item_inputs_by_product_variant_ids(
     order_item_inputs: &BTreeSet<OrderItemInput>,
     ids_and_counts: &HashMap<Uuid, (Uuid, u64)>,
 ) -> Result<HashMap<Uuid, OrderItemInput>> {
     order_item_inputs
         .iter()
-        .map(|e| {
-            let id_and_count_ref = ids_and_counts.get(&e.shopping_cart_item_id);
-            let id_and_count = id_and_count_ref.and_then(|(id, _)| Some((*id, e.clone())));
-            let error = build_hash_map_error(ids_and_counts, e.shopping_cart_item_id);
+        .map(|order_item_input| {
+            let id_and_count_ref = ids_and_counts.get(&order_item_input.shopping_cart_item_id);
+            let id_and_count =
+                id_and_count_ref.and_then(|(id, _)| Some((*id, order_item_input.clone())));
+            let error =
+                build_hash_map_error(ids_and_counts, order_item_input.shopping_cart_item_id);
             id_and_count.ok_or(error)
         })
         .collect()
 }
 
-/// Obtains product variants from product variant ids.
+/// Obtains product variants from product variant UUIDs.
 ///
 /// Filters product variants which are non-publicly-visible.
 async fn query_product_variants_by_product_variant_ids(
@@ -741,6 +758,7 @@ fn build_discounts_from_response_data(
 
 /// Builds `get_discounts::FindApplicableDiscountsInput`, which is the following struct:
 ///
+/// ```
 /// pub struct FindApplicableDiscountsInput {
 ///     #[serde(rename = "orderAmount")]
 ///     pub order_amount: Int,
@@ -749,8 +767,9 @@ fn build_discounts_from_response_data(
 ///     #[serde(rename = "userId")]
 ///     pub user_id: UUID,
 /// }
+/// ```
 ///
-/// Describes the order amount, which is the sum of all product variant version prices, a Vec of `get_discounts::FindApplicableDiscountsProductVariantInput` and the user which the discounts are be queried for.
+/// Describes the order amount, which is the sum of all product variant version prices, a vector of `get_discounts::FindApplicableDiscountsProductVariantInput` and the user which the discounts are be queried for.
 fn build_find_applicable_discounts_input(
     user_id: Uuid,
     find_applicable_discounts_product_variant_input: Vec<
@@ -766,13 +785,15 @@ fn build_find_applicable_discounts_input(
     find_applicable_discounts_input
 }
 
-/// Builds part of the `get_discounts::FindApplicableDiscountsInput`, which is a Vec of the following struct:
-///  
+/// Builds part of the `get_discounts::FindApplicableDiscountsInput`, which is a vector of the following struct:
+///
+/// ```
 /// pub struct FindApplicableDiscountsProductVariantInput {
 ///     pub product_variant_id: Uuid,
 ///     pub count: u64,
 ///     pub coupon_ids: HashSet<Uuid>,
 /// }
+/// ```
 ///
 /// Describes product variant ids, the count of items planned to order and the coupons, which should be applied.
 fn build_find_applicable_discounts_product_variant_input(
@@ -924,7 +945,7 @@ fn build_calculate_shipment_fees_input(
     product_variant_versions_by_product_variant_ids: &HashMap<Uuid, ProductVariantVersion>,
     counts_by_product_variant_ids: &HashMap<Uuid, u64>,
     order_item_inputs_by_product_variant_ids: &HashMap<Uuid, OrderItemInput>,
-) -> Result<CalculateShipmentFeesInput, Error> {
+) -> Result<get_shipment_fees::CalculateShipmentFeesInput, Error> {
     let items =
         product_variant_versions_by_product_variant_ids
             .iter()
@@ -1018,7 +1039,10 @@ where
     {
         Ok(cursor) => {
             let objects: Vec<T> = cursor.try_collect().await?;
-            let ids: Vec<Uuid> = objects.iter().map(|o| Uuid::from(o.clone())).collect();
+            let ids: Vec<Uuid> = objects
+                .iter()
+                .map(|object: &T| Uuid::from(object.clone()))
+                .collect();
             object_ids
                 .iter()
                 .fold(Ok(()), |o, id| match ids.contains(id) {
@@ -1043,9 +1067,9 @@ where
     }
 }
 
-/// Returns an error of a HashMap retrieval.
+/// Returns an error of a hash map retrieval.
 ///
-/// Constructs error message that describes a failed retrieval of an item `V` by product variant id.
+/// Constructs error message that describes a failed retrieval of an item `V` by product variant UUID.
 fn build_hash_map_error<V>(_hash_map: &HashMap<Uuid, V>, id: Uuid) -> Error {
     let message = format!(
         "`{}` for product variant of UUID: `{}` is not present in `{}`. ",

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::mutation_input_structs::PaymentAuthorizationInput;
+use super::super::mutation_input_structs::PaymentAuthorizationInput;
 
 /// Payment authorization data that can be attached to order.
 ///
