@@ -17,8 +17,8 @@ pub struct CreateOrderInput {
     pub invoice_address_id: Uuid,
     /// UUID of payment information that the order should be processed with.
     pub payment_information_id: Uuid,
-    /// VAT number.
-    pub vat_number: String,
+    /// Optional VAT number.
+    pub vat_number: Option<String>,
 }
 
 #[derive(Debug, InputObject, PartialEq, Eq, Clone)]

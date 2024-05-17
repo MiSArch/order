@@ -37,8 +37,8 @@ pub struct OrderDTO {
     pub payment_information_id: Uuid,
     /// Optional payment authorization information.
     pub payment_authorization: Option<PaymentAuthorization>,
-    /// VAT number.
-    pub vat_number: String,
+    /// Optional VAT number.
+    pub vat_number: Option<String>,
 }
 
 impl TryFrom<(Order, Option<PaymentAuthorization>)> for OrderDTO {

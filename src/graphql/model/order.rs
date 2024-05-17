@@ -39,9 +39,9 @@ pub struct Order {
     pub compensatable_order_amount: u64,
     /// UUID of payment information that the order should be processed with.
     pub payment_information_id: Uuid,
-    /// VAT number.
+    /// Optional VAT number.
     #[graphql(skip)]
-    pub vat_number: String,
+    pub vat_number: Option<String>,
 }
 
 #[ComplexObject]
