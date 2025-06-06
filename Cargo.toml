@@ -24,8 +24,8 @@ serde_json = "1.0.140"
 graphql_client = "0.14.0"
 reqwest = { version = "0.12.15", features = ["json"] }
 chrono = { version = "0.4.40", features = ["serde"] }
-opentelemetry = "0.29.0"
-opentelemetry_sdk = { version = "0.29.0", features = ["rt-tokio"]}
-opentelemetry-otlp = "0.29.0"
+opentelemetry = "0.30.0"
+opentelemetry_sdk = { version = "0.30.0", features = ["rt-tokio"]}
+opentelemetry-otlp = "0.30.0"
 axum-otel-metrics = { path = "axum-otel-metrics" }
 once_cell = "1.21.3"
