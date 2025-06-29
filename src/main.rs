@@ -189,9 +189,16 @@ static RESOURCE: Lazy<Resource> = Lazy::new(|| {
 
 /// Initializes OpenTelemetry metrics exporter and sets the global meter provider.
 fn init_otlp() -> HttpMetricsLayer {
+    let otlp_url = match env::var_os("OTEL_EXPORTER_OTLP_ENDPOINT") {
+        Some(uri) => uri.into_string().unwrap(),
+        None => "http://localhost:4318".to_string(),
+    };
+    
+    let otlp_endpoint = format!("{}/v1/metrics", otlp_url.trim_end_matches('/'));
+    
     let exporter = opentelemetry_otlp::MetricExporter::builder()
         .with_http()
-        .with_endpoint("http://otel-collector:4318/v1/metrics")
+        .with_endpoint(otlp_endpoint)
         .with_temporality(Temporality::default())
         .build()
         .unwrap();
